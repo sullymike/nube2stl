@@ -283,7 +283,7 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
   pieza de dos caras no sale; en los tipos con Poisson es solo un alzado más fino, sin realce (el de la malla se ve
   al generar).
 
-## F. Copia a tamaño real — *HECHO en 0.22.0*
+## F. Copia sin impresora (tamaño real o a escala) — *HECHO en 0.22.0*
 
 - **Qué es.** (Pregunta del usuario: «¿cómo se podría hacer un objeto STL sin reducir la escala?».) Antes se hacía
   con Escala 1:1, pero el resto del programa seguía pensando en la impresora: detalle de media boquilla, tolerancia
@@ -322,7 +322,13 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
     medida: ya no se alisa (`mesh=True` en `relief.reconstruct`). Acueducto automático: de 7,7 a 5,6 mm de mediana.
   - Las mallas georreferenciadas no restaban el origen antes de pasar a float32 (las nubes sí).
   - Base: en la consola o con ajustes guardados quedaba en 3 mm; aviso con el valor proporcional (`real_base`).
-  - Volúmenes y medidas legibles (`fmt_vol`, `fmt_len`) en registro, ficha, consola y resultado.
+  - Volúmenes y medidas legibles (`fmt_vol`, `fmt_len`, `fmt_dims`) en registro, ficha, consola y resultado.
+- **Otra escala** (petición del usuario): el destino pasa a ser «Copia sin impresora», a 1:1 o a la escala de
+  «Escala 1:» (`relief.real_scale`). La tolerancia (`REAL_TOL` × celda) se pasa a mm de la pieza; la base proporcional
+  se calcula con la pieza escalada y sigue a la escala mientras no se toque a mano; el plan da el detalle en la pieza
+  y en el original. Acueducto a 1:50: 71,8 × 26,4 × 6,1 cm, celda de 0,76 mm (38 en el original), base 5 mm.
+- **Impresora en Avanzado** (petición del usuario): lista desplegable con las mismas impresoras que el asistente
+  (`impresoras.groups`); marca la que coincide con los valores o «A mano».
 - **Límites.**
   - La malla sigue saliendo cerrada (con base o trasera): una superficie abierta tal cual (sin base) para
     archivo no está hecha.

@@ -1170,6 +1170,38 @@ class TamanoReal(unittest.TestCase):
                            log=logs.append, mesh=True)
         self.assertTrue(any('puntos salen de una malla' in s for s in logs))
 
+    def test_copia_sin_impresora_a_escala(self):
+        """Copia sin impresora a 1:10: la pieza mide la décima parte, la tolerancia va en mm de la pieza (la décima
+        parte de la de 1:1) y la base proporcional se calcula con el tamaño de la pieza, no del original."""
+        rng = np.random.default_rng(8)
+        n = 40_000
+        u, v = rng.uniform(0, 2 * np.pi, n), rng.uniform(-1, 1, n)
+        xyz = np.c_[3000 * np.sqrt(1 - v ** 2) * np.cos(u), 3000 * np.sqrt(1 - v ** 2) * np.sin(u),
+                    1500 * v].astype(np.float32)
+        p1 = relief.Params(mode='objeto', target='real', denoise=0)
+        p10 = relief.Params(mode='objeto', target='real', ratio=10, denoise=0)
+        self.assertEqual(relief.piece_scale(p10, 6000), 0.1)
+        self.assertAlmostEqual(relief.tolerance(p10, 40), relief.tolerance(p1, 40) / 10)
+        self.assertLess(relief.real_base(6000 * 0.1), relief.real_base(6000))      # 5 mm frente a 30
+        self.assertEqual(relief.scale_txt(0.1), '1:10')
+        self.assertEqual(relief.scale_txt(2.0), '2:1')
+        r = relief.reconstruct(xyz, p10)
+        self.assertAlmostEqual(float(np.ptp(r.verts, 0).max()), 600, delta=20)
+        self.assertEqual(r.bad_edges, 0)
+
+    def test_ficha_de_una_copia(self):
+        """La ficha PDF de una copia sin impresora (medidas en m, volumen sin PLA)."""
+        import ficha
+        rng = np.random.default_rng(9)
+        u, v = rng.uniform(0, 2 * np.pi, 20_000), rng.uniform(-1, 1, 20_000)
+        xyz = np.c_[2500 * np.sqrt(1 - v ** 2) * np.cos(u), 2500 * np.sqrt(1 - v ** 2) * np.sin(u),
+                    800 * v].astype(np.float32)
+        p = relief.Params(mode='objeto', target='real', denoise=0)
+        r = relief.reconstruct(xyz, p)
+        out = os.path.join(TMP, 'copia_ficha.pdf')
+        ficha.make_pdf(out, r, p, {'path': 'sintetica.ply', 'points': len(xyz)}, '', lambda f: f)
+        self.assertGreater(os.path.getsize(out), 10_000)
+
     def test_tamano_real_sin_realce(self):
         """El realce de lo pequeño no se aplica a una copia fiel."""
         h = np.random.default_rng(1).normal(0, 0.1, (40, 40))

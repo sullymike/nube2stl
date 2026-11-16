@@ -205,9 +205,23 @@ def preview_params(prm, stats):
 
 
 def is_real(prm):
-    """Destino «Tamaño real»: copia digital 1:1 (archivo, fresado, gran formato, medir), no una réplica para la
-    impresora: escala 1, sin cama ni boquilla, detalle y simplificación en mm reales."""
+    """Destino «Copia sin impresora» (target 'real'): copia digital para archivo, fresado, gran formato o medir, no
+    una réplica para la impresora: sin cama ni boquilla, detalle y simplificación según el escaneo y el uso. A 1:1
+    salvo que se fije otra escala (ratio: 1:10, 1:50… o 0,5 = 2:1)."""
     return getattr(prm, 'target', 'imprimir') == 'real'
+
+
+def real_scale(prm):
+    """Escala de la copia sin impresora: 1/ratio, o 1 (tamaño real) si no se fija."""
+    r = getattr(prm, 'ratio', 0)
+    return 1.0 / r if r > 0 else 1.0
+
+
+def scale_txt(s):
+    """Escala legible: 1:1, 1:10, 2:1…"""
+    if abs(s - 1) < 1e-9:
+        return '1:1'
+    return f'1:{1 / s:.3g}' if s < 1 else f'{s:.3g}:1'
 
 
 # simplificación a tamaño real: error admisible = esta fracción del detalle (celda), según el uso
@@ -219,6 +233,13 @@ def fmt_len(mm):
     return f'{mm / 1000:.2f} m' if mm >= 2000 else f'{mm / 10:.1f} cm' if mm >= 100 else f'{mm:.1f} mm'
 
 
+def fmt_dims(*mm):
+    """Varias medidas en la misma unidad (la que corresponde a la mayor): «71.8 × 26.4 × 6.1 cm»."""
+    big = max(mm)
+    k, u = (1000, 'm') if big >= 2000 else (10, 'cm') if big >= 100 else (1, 'mm')
+    return ' × '.join(f'{v / k:.{2 if u == "m" else 1}f}' for v in mm) + f' {u}'
+
+
 def fmt_vol(mm3):
     """Volumen legible: m³ (desde 0,1 m³), litros (desde 1 l) o cm³."""
     return (f'{mm3 / 1e9:,.2f} m³' if mm3 >= 1e8 else f'{mm3 / 1e6:,.1f} l' if mm3 >= 1e6 else
@@ -226,16 +247,20 @@ def fmt_vol(mm3):
 
 
 def real_base(L):
-    """Grosor de base razonable para una copia a tamaño real: 0,5 % del lado mayor, entre 3 y 200 mm."""
+    """Grosor de base razonable para una copia sin impresora: 0,5 % del lado mayor de la pieza (mm de la pieza, ya
+    escalada), entre 3 y 200 mm."""
     return float(min(200, max(3, round(0.005 * L / 5) * 5)))
 
 
 def warn_thin_base(prm, L, log):
-    """Aviso si, en una copia a tamaño real, la base es una lámina para el tamaño de la pieza (en la ventana se
-    pone proporcional al elegir el destino; desde la consola o con unos ajustes guardados, no)."""
-    if is_real(prm) and prm.base < 0.5 * real_base(L):
-        log(f'AVISO: base de {prm.base:g} mm bajo una pieza de {fmt_len(L)}: es una lámina. Para una copia a tamaño '
-            f'real conviene unos {real_base(L):g} mm (--base {real_base(L):g})')
+    """Aviso si, en una copia sin impresora, la base es una lámina para el tamaño de la pieza (en la ventana se
+    pone proporcional al elegir el destino; desde la consola o con unos ajustes guardados, no). L: mm de la nube."""
+    if not is_real(prm):
+        return
+    Lp = L * real_scale(prm)
+    if prm.base < 0.5 * real_base(Lp):
+        log(f'AVISO: base de {prm.base:g} mm bajo una pieza de {fmt_len(Lp)}: es una lámina. Para esta copia '
+            f'conviene unos {real_base(Lp):g} mm (--base {real_base(Lp):g})')
 
 
 def by_length(prm):
@@ -245,9 +270,9 @@ def by_length(prm):
 
 def piece_scale(prm, L):
     """Factor nube (mm) -> pieza (mm): 1/ratio si se fija la escala 1:ratio; si no, lado mayor final / L;
-    tamaño real si target_len = 0 o si el destino es «Tamaño real»."""
+    tamaño real si target_len = 0. Copia sin impresora: real_scale (1:1 si no se fija la escala)."""
     if is_real(prm):
-        return 1.0
+        return real_scale(prm)
     if getattr(prm, 'ratio', 0) > 0:
         return 1.0 / prm.ratio
     return prm.target_len / L if prm.target_len > 0 and L > 0 else 1.0
@@ -702,9 +727,10 @@ QUALITY = {'normal': 1.0, 'alta': 0.5, 'maxima': 0.25}
 def tolerance(prm, res=None):
     """Error admisible al simplificar (mm de la pieza): media boquilla o media capa (lo menor), por el factor de
     calidad. Por debajo de eso la impresora no reproduce la diferencia.
-    A tamaño real no hay impresora: una fracción de la celda (res, mm reales) según el uso (REAL_TOL)."""
+    Copia sin impresora: una fracción de la celda según el uso (REAL_TOL); res en mm de la nube, la tolerancia en
+    mm de la pieza (a 1:10, la décima parte)."""
     if is_real(prm):
-        return (res or prm.res or 1.0) * REAL_TOL.get(getattr(prm, 'use', 'archivo'), 0.25)
+        return (res or prm.res or 1.0) * REAL_TOL.get(getattr(prm, 'use', 'archivo'), 0.25) * real_scale(prm)
     return min(prm.nozzle, prm.layer) / 2 * QUALITY.get(prm.quality, 0.5)
 
 
@@ -1166,7 +1192,7 @@ def heightmap(p, prm: Params, rgb=None, log=lambda s: None):
     else:
         lim = {'impresora': 'la impresora', 'escaneo': 'el escaneo'}.get(plan['why'], plan['why'])
         log(f'Resolución automática: {res:g} — limita {lim} '
-            + ('(copia a tamaño real); ' if is_real(prm) else
+            + ('(copia sin impresora); ' if is_real(prm) else
                f'(escaneo {plan["res_scan"]:.2f}, boquilla {prm.nozzle:g} mm → {plan["res_print"]:.2f}); ')
             + f'celda de {plan["cell_print"]:.3f} mm en la pieza')
     if plan['fits'] is False:
@@ -1346,8 +1372,9 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
             r.dev = desviacion.transfer(r0, r)
     depth = r.relief_depth
     nl = depth / prm.layer if prm.layer > 0 else 0
-    if is_real(prm):                            # copia a tamaño real: ni capas ni impresora
-        log(f'Copia a tamaño real: {depth / 1000:.2f} m de ' + ('alto' if r.mode == 'objeto' else 'relieve'))
+    if is_real(prm):                            # copia sin impresora: ni capas ni impresora
+        log(f'Copia sin impresora, {scale_txt(real_scale(prm))}: {fmt_len(depth)} de '
+            + ('alto' if r.mode == 'objeto' else 'relieve'))
         return r
     if r.mode == 'objeto':
         log(f'Objeto de {depth:.1f} mm de alto ≈ {nl:.0f} capas de {prm.layer:g} mm')
@@ -1383,7 +1410,7 @@ def boost_text(prm, s, zs=1.0):
 def _boost(h, hb, mask, res, prm, log=lambda s: None):
     """Realce de lo pequeño (boost_small) en la cara y en el reverso. h en unidades de la nube (mm de la piedra)
     ya multiplicadas por la exageración: el detalle se mide en la piedra, sin exagerar."""
-    if getattr(prm, 'boost', 1.0) <= 1 or is_real(prm):      # a tamaño real, la copia es fiel: sin realce
+    if getattr(prm, 'boost', 1.0) <= 1 or is_real(prm):      # copia sin impresora: fiel, sin realce
         return h, hb
     nv, nu = mask.shape
     s = piece_scale(prm, max(nu, nv) * res)

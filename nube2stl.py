@@ -202,7 +202,7 @@ SPEC = [
     ('Tipo de pieza', [
         ('target', 'Destino', 'c', dict(items=['imprimir', 'real']),
          'imprimir: una réplica a escala para la impresora (tamaño, boquilla, capas, cama).\n'
-         'real: una copia digital a tamaño real, 1:1 (archivo, fresado, gran formato, medir): sin escala ni '
+         'real: una copia sin impresora (archivo, fresado, gran formato, medir), a 1:1 o a la escala que se fije: sin '
          'impresora; el detalle y la simplificación van en mm reales.'),
         ('mode', 'Método', 'c', dict(items=['alturas', '3d', 'bloque', 'objeto']),
          'alturas: mapa de alturas (rápido, siempre cerrado). 3d: Poisson, conserva socavados (lento). '
@@ -233,9 +233,10 @@ SPEC = [
         ('target_len', 'Lado mayor final', 'f', dict(lo=0, hi=100000, step=10, dec=1, suf='mm', special='tamaño real'),
          'Tamaño al que se imprimirá: el lado mayor de la pieza medirá esto. No cuenta si fijas la escala.'),
         ('ratio', 'Escala 1:', 'f', dict(lo=0, hi=100000, step=1, dec=2, special='según lado mayor'),
-         'Escala exacta de la réplica (1:5, 1:10…; 1 = tamaño real). Si la fijas, manda sobre el lado mayor.'),
+         'Escala exacta de la réplica (1:5, 1:10…; 1 = tamaño real; 0,5 = el doble). Si la fijas, manda sobre el lado '
+         'mayor. En una copia sin impresora, sin fijar es 1:1.'),
         ('use', 'Uso', 'c', dict(items=['archivo', 'cnc', 'gran formato', 'medir']),
-         'Para qué es la copia a tamaño real (solo con el destino «Tamaño real»):\n'
+         'Para qué es la copia (solo con el destino «Copia sin impresora»):\n'
          'archivo: guardarla y verla (con color, en PLY u OBJ).\n'
          'cnc: fresarla (STL, sin color).\n'
          'gran formato: imprimirla por piezas (hay que trocearla en el laminador).\n'
@@ -416,27 +417,33 @@ _len_txt = relief.fmt_len
 
 
 def plan_html_real(st, prm, pl):
-    """plan_html con el destino «Tamaño real»: medidas reales, detalle, hasta dónde llega Poisson y simplificación."""
+    """plan_html con el destino «Copia sin impresora»: medidas, detalle, hasta dónde llega Poisson y simplificación.
+    El detalle se da en mm de la pieza y, si la escala no es 1:1, también en mm del original."""
     sx, sy = pl['size']
     h = pl['height']
+    sc = pl['scale']
+    one = abs(sc - 1) < 1e-9
+
+    def mm(v):                                  # medida de la nube -> texto en la pieza (y en el original)
+        return f'{v * sc:.3g} mm' + ('' if one else f' ({v:.3g} en el original)')
     why = {'escaneo': 'el del escaneo', 'manual': 'manual'}.get(pl['why'], pl['why'])
-    txt = (f'<b>Copia a tamaño real (1:1):</b> {_len_txt(sx)} × {_len_txt(sy)} × {_len_txt(h)}'
+    txt = (f'<b>Copia sin impresora, {relief.scale_txt(sc)}:</b> {relief.fmt_dims(sx, sy, h)}'
            + (' (alto)' if pl.get('object') else '') + '<br>'
-           f'<b>Detalle:</b> celda de {pl["res"]:.3g} mm ({why}; el escaneo da {pl["res_scan"]:.3g} mm) · '
+           f'<b>Detalle:</b> celda de {mm(pl["res"])} · {why} · '
            f'{pl["cells"] / 1e6:.1f} M celdas' + (' de superficie' if pl.get('object') else '') + '<br>')
     warn = ''
     if prm.mode in ('3d', 'objeto', 'bloque'):
         depth, pc = relief.poisson_cell(st, prm, pl['res'])
-        txt += f'<b>Poisson:</b> profundidad {depth} → celda real ≈ {pc:.3g} mm<br>'
+        txt += f'<b>Poisson:</b> profundidad {depth} → celda real ≈ {mm(pc)}<br>'
         if pc > 1.5 * pl['res']:
-            warn += (f'<br><span style="color:{C["accent_dk"]}">⚠ Poisson llega a unos {pc:.3g} mm: pedir menos '
+            warn += (f'<br><span style="color:{C["accent_dk"]}">⚠ Poisson llega a unos {mm(pc)}: pedir menos '
                      f'resolución no da más detalle. Para más, sube «Profundidad Poisson» en Avanzado (cada nivel, '
                      f'la mitad de celda y unas 4 veces más memoria).</span>')
     if pl['res'] < 0.7 * pl['res_scan']:
-        warn += (f'<br><span style="color:{C["accent_dk"]}">⚠ Celda más fina que el escaneo ({pl["res_scan"]:.3g} '
-                 f'mm): no hay detalle real que ganar y el fichero crece.</span>')
+        warn += (f'<br><span style="color:{C["accent_dk"]}">⚠ Celda más fina que el escaneo ({mm(pl["res_scan"])}): '
+                 f'no hay detalle real que ganar y el fichero crece.</span>')
     use = getattr(prm, 'use', 'archivo')
-    txt += (f'<b>Simplificar:</b> error admisible {pl["tol"]:.3g} mm (uso «{use}») · formato: '
+    txt += (f'<b>Simplificar:</b> error admisible {pl["tol"]:.3g} mm en la pieza (uso «{use}») · formato: '
             f'{REAL_FORMAT.get(use, "")}')
     if use == 'gran formato':
         warn += '<br>Para imprimirla hay que trocearla en el laminador (o en otro programa).'
@@ -511,8 +518,8 @@ ONLY_OBJECT = ('up', 'cut', 'ground', 'interior', 'ceiling')
 ONLY_POISSON = ('poisson_depth',)
 ONLY_POINTS = ('denoise',)             # modos que trabajan con los puntos en 3D (no con el mapa de alturas)
 ONLY_HEIGHTMAP = ('detrend',)
-REAL_OFF = ('target_len', 'ratio', 'nozzle', 'layer', 'bed_x', 'bed_y', 'quality', 'boost', 'boost_lo', 'boost_hi',
-            'boost_size')        # lo que no cuenta con el destino «Tamaño real»
+REAL_OFF = ('target_len', 'nozzle', 'layer', 'bed_x', 'bed_y', 'quality', 'boost', 'boost_lo', 'boost_hi',
+            'boost_size', 'printer_sel')        # lo que no cuenta con el destino «Copia sin impresora»
 DISABLED = {'alturas': ONLY_OBJECT + ONLY_POISSON + ONLY_POINTS,
             '3d': ONLY_OBJECT + ONLY_POINTS + ONLY_HEIGHTMAP,
             'bloque': ONLY_OBJECT + ONLY_HEIGHTMAP + ('z_scale', 'negative', 'base', 'frame', 'shape'),
@@ -1600,6 +1607,32 @@ class MainWindow(QMainWindow):
                     head.setStyleSheet(f'color: {C["teal"]}; margin-top: 4px;')
                     form.addRow(head)
                 names = []
+                if group == 'Impresora':                  # elegir una impresora rellena los cuatro valores
+                    self.printer_cb = QComboBox()
+                    self.printer_cb.setToolTip('Tus impresoras (las guardadas en nube2stl y las de OrcaSlicer, Bambu '
+                                               'Studio, PrusaSlicer o Cura) y modelos habituales. Rellena boquilla, '
+                                               'capa y cama; «A mano» deja los valores de abajo.')
+                    self.printer_cb.activated.connect(self._printer_chosen)
+                    holder = QWidget()
+                    row = QHBoxLayout(holder)
+                    row.setContentsMargins(0, 0, 0, 0)
+                    row.setSpacing(6)
+                    row.addWidget(self.printer_cb, 1)
+                    rb = QToolButton()
+                    rb.setText('⟳')
+                    rb.setToolTip('Volver a leer las impresoras de los laminadores y las guardadas')
+                    rb.clicked.connect(lambda: self._fill_printer_cb(reload=True))
+                    row.addWidget(rb)
+                    q = QToolButton()
+                    q.setObjectName('help')
+                    q.setText('?')
+                    q.setCursor(Qt.PointingHandCursor)
+                    q.setToolTip('Ayuda sobre la impresora')
+                    q.clicked.connect(lambda: self.show_help('p-printer'))
+                    row.addWidget(q)
+                    lb = QLabel('Impresora')
+                    form.addRow(lb, holder)
+                    self.param_rows['printer_sel'] = (lb, holder)
                 for name, label, kind, opt, tip in groups[group]:
                     w = self._make_widget(kind, opt, getattr(defaults, name), label)
                     w.setToolTip(tip)
@@ -1710,6 +1743,10 @@ class MainWindow(QMainWindow):
         self.widgets['wall'].valueChanged.connect(self._mode_enable)
         self.widgets['units'].currentTextChanged.connect(self._reload_cloud)
         self.widgets['target'].currentTextChanged.connect(self._target_changed)
+        self.widgets['ratio'].valueChanged.connect(self._ratio_changed)
+        for k in ('nozzle', 'layer', 'bed_x', 'bed_y'):
+            self.widgets[k].valueChanged.connect(self._sync_printer_cb)
+        self._fill_printer_cb()
         self.widgets['clean'].toggled.connect(self._toggle_clean)
         self.widgets['ground'].toggled.connect(self._mode_enable)
         self.widgets['detrend'].valueChanged.connect(self._mode_enable)
@@ -2148,7 +2185,9 @@ class MainWindow(QMainWindow):
             off.add('view')
         if self.widgets['boost'].value() <= 1:
             off.update(('boost_lo', 'boost_hi', 'boost_size'))
-        if self.widgets['target'].currentText() == 'real':      # copia 1:1: ni escala ni impresora ni realce
+        real = self.widgets['target'].currentText() == 'real'
+        self.widgets['ratio'].setSpecialValueText('1:1 (tamaño real)' if real else 'según lado mayor')
+        if real:                                   # copia sin impresora: ni lado mayor ni impresora ni realce
             off.update(REAL_OFF)
         else:
             off.add('use')
@@ -2229,9 +2268,73 @@ class MainWindow(QMainWindow):
         self._adv_note()
 
     # ---------- tipo de pieza (selector de arriba: pone el método y «Abierto por abajo»)
+    PRINTER_HAND = 'A mano (los valores de abajo)'
+
+    def _fill_printer_cb(self, reload=False):
+        """Lista de impresoras de Avanzado › Impresora (las mismas que el asistente), con la que coincide marcada."""
+        cb = getattr(self, 'printer_cb', None)
+        if cb is None:
+            return
+        if reload or not hasattr(self, '_pgroups'):
+            import impresoras
+            try:
+                self._pgroups = impresoras.groups()
+            except Exception:  # noqa: BLE001  un perfil raro de un laminador no debe impedir abrir la ventana
+                self._pgroups = []
+        cb.blockSignals(True)
+        cb.clear()
+        cb.addItem(self.PRINTER_HAND)
+        for title, items in self._pgroups:
+            cb.addItem(f'— {title} —')
+            it = cb.model().item(cb.count() - 1)
+            it.setEnabled(False)
+            f = it.font()
+            f.setBold(True)
+            it.setFont(f)
+            for x in items:
+                det = 'píxel' if x['tech'] == 'resina' else 'boquilla'
+                cb.addItem(f'{x["name"]} · {x["bed_x"]:g} × {x["bed_y"]:g} · {det} {x["nozzle"]:g}', x)
+        cb.blockSignals(False)
+        self._sync_printer_cb()
+
+    def _sync_printer_cb(self, *_):
+        """Marca la impresora cuyos valores coinciden con los de abajo (o «A mano»)."""
+        cb = getattr(self, 'printer_cb', None)
+        if cb is None or not hasattr(self, 'widgets'):
+            return
+        w = self.widgets
+        cur = (w['bed_x'].value(), w['bed_y'].value(), round(w['nozzle'].value(), 3), round(w['layer'].value(), 3))
+        keep = cb.currentData()
+        if isinstance(keep, dict) and (keep['bed_x'], keep['bed_y'], round(keep['nozzle'], 3),
+                                       round(keep['layer'], 3)) == cur:
+            if hasattr(self, 'printer_lbl'):
+                self.update_plan()
+            return                                  # la elegida sigue valiendo (varias pueden coincidir)
+        idx = 0
+        for i in range(cb.count()):
+            x = cb.itemData(i)
+            if isinstance(x, dict) and (x['bed_x'], x['bed_y'], round(x['nozzle'], 3), round(x['layer'], 3)) == cur:
+                idx = i
+                break
+        cb.blockSignals(True)
+        cb.setCurrentIndex(idx)
+        cb.blockSignals(False)
+        if hasattr(self, 'printer_lbl'):
+            self.update_plan()
+
+    def _printer_chosen(self, i):
+        x = self.printer_cb.itemData(i)
+        if not isinstance(x, dict):
+            return
+        w = self.widgets
+        for k in ('nozzle', 'layer', 'bed_x', 'bed_y'):
+            w[k].setValue(float(x[k]))
+        self.say(f'Impresora: {x["name"]} (cama {x["bed_x"]:g} × {x["bed_y"]:g}, '
+                 f'{"píxel" if x["tech"] == "resina" else "boquilla"} {x["nozzle"]:g} mm, capa {x["layer"]:g} mm)')
+
     def _target_changed(self, target):
-        """Destino Imprimir / Tamaño real: botones, parámetros que se ven y, al pasar a tamaño real a mano, base
-        proporcional y unidades confirmadas (a 1:1 un error de unidades es el resultado entero)."""
+        """Destino Imprimir / Copia sin impresora: botones, parámetros que se ven y, al pasar a la copia a mano,
+        base proporcional y unidades confirmadas (a 1:1 un error de unidades es el resultado entero)."""
         for k, b in getattr(self, 'target_btns', {}).items():
             b.setChecked(k == target)
         self._mode_enable()
@@ -2239,25 +2342,41 @@ class MainWindow(QMainWindow):
         if getattr(self, '_setting', False) or getattr(self, 'stats', None) is None:
             return
         w = self.widgets
-        L = max(self.stats['length'], self.stats['width'])
-        base = self._real_base(L)
         if target == 'real':
-            if w['base'].value() == Params().base and base > Params().base:
-                w['base'].setValue(base)
-                self.say(f'Copia a tamaño real: base de {base:g} mm (proporcional a la pieza, de {L / 1000:.1f} m; '
-                         f'cámbiala en Pieza)')
-            self.say('Copia a tamaño real: escala 1:1, sin impresora ni realce; detalle y simplificación en mm reales')
+            if w['base'].value() == Params().base:
+                self._auto_base()
+            sc = relief.scale_txt(relief.real_scale(self.params()))
+            self.say(f'Copia sin impresora, {sc}: sin boquilla, cama ni realce; detalle y simplificación según el '
+                     f'escaneo y el uso (la escala, en Tamaño › Escala 1:)')
             if w['units'].currentText() == 'auto':
                 QTimer.singleShot(0, lambda: self.ask_units(force=True))
-        elif w['base'].value() == base and base > Params().base:
+        elif w['base'].value() == getattr(self, '_base_auto', None):
             w['base'].setValue(Params().base)
+            self._base_auto = None
+
+    def _auto_base(self):
+        """Base proporcional a la pieza (copia sin impresora): al elegir el destino y, si sigue siendo la puesta
+        así, al cambiar la escala (a 1:50, 180 mm de base serían 9 m en el original)."""
+        if getattr(self, 'stats', None) is None:
+            return
+        L = max(self.stats['length'], self.stats['width']) * relief.real_scale(self.params())
+        base = relief.real_base(L)
+        if base != self.widgets['base'].value():
+            self.widgets['base'].setValue(base)
+            self.say(f'Base de {base:g} mm (proporcional a la pieza, de {_len_txt(L)}; cámbiala en Pieza)')
+        self._base_auto = base
+
+    def _ratio_changed(self, *_):
+        if self.widgets['target'].currentText() == 'real' and not getattr(self, '_setting', False) \
+                and self.widgets['base'].value() == getattr(self, '_base_auto', None):
+            self._auto_base()
 
     @staticmethod
     def _real_base(L):
         return relief.real_base(L)
 
     def ask_units(self, force=False):
-        """Unidades de la nube «auto» dudosas (o a tamaño real, siempre): cuadro con lo que mediría en cada una. Si
+        """Unidades de la nube «auto» dudosas (o en una copia sin impresora, siempre): cuadro con lo que mediría en cada una. Si
         se elige otra, la nube se vuelve a leer con ella."""
         li = getattr(self, 'load_info', None) or {}
         if self.xyz is None or not li.get('guessed') or os.environ.get('NUBE2STL_NO_ASK'):
@@ -2272,7 +2391,7 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(dlg)
         q = QLabel(f'El fichero no dice en qué unidades está. Sus números van de 0 a <b>{raw.max():.4g}</b>. '
                    f'Elige cuánto mide de verdad:' if not force else
-                   f'Para una copia a tamaño real, las unidades tienen que ser seguras. El fichero no las dice: sus '
+                   f'Para una copia sin impresora (a escala exacta), las unidades tienen que ser seguras. El fichero no las dice: sus '
                    f'números van de 0 a <b>{raw.max():.4g}</b>. Elige cuánto mide de verdad:')
         q.setWordWrap(True)
         lay.addWidget(q)
@@ -2322,14 +2441,15 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(box)
         v.setContentsMargins(0, 0, 0, 4)
         v.setSpacing(4)
-        dest = QHBoxLayout()                        # destino: réplica para imprimir o copia a tamaño real
+        dest = QHBoxLayout()                        # destino: réplica para imprimir o copia sin impresora
         dest.setSpacing(4)
         self.target_btns = {}
         dgrp = QButtonGroup(box)
         for key, text, tip in (('imprimir', 'Imprimir una réplica', 'Réplica a escala para la impresora: tamaño, '
                                 'boquilla, capas y cama'),
-                               ('real', 'Copia a tamaño real', 'Copia digital 1:1 (archivo, fresado, gran formato, '
-                                'medir): sin escala ni impresora; detalle y simplificación en mm reales')):
+                               ('real', 'Copia sin impresora', 'Copia digital a tamaño real o a la escala que '
+                                'elijas (archivo, fresado, gran formato, medir): sin boquilla ni cama; detalle y '
+                                'simplificación según el escaneo y el uso')):
             b = QPushButton(text)
             b.setObjectName('kind')
             b.setCheckable(True)
@@ -3427,9 +3547,11 @@ class MainWindow(QMainWindow):
             bed = (f'cama {w["bed_x"].value():.0f} × {w["bed_y"].value():.0f}' if w['bed_x'].value() > 0
                    and w['bed_y'].value() > 0 else 'sin comprobar la cama')
             noz, lay = (f'{w[k].value():g}'.replace('.', ',') for k in ('nozzle', 'layer'))
-            self.printer_lbl.setText(f'Impresora: boquilla {noz} mm · capa {lay} mm · {bed} · calidad '
-                                     f'{w["quality"].currentText()} · <a href="#">cambiar</a> (pestaña Avanzado o '
-                                     f'el asistente)')
+            cur = self.printer_cb.currentData() if hasattr(self, 'printer_cb') else None
+            name = f'<b>{cur["name"]}</b> · ' if isinstance(cur, dict) else ''
+            self.printer_lbl.setText(f'Impresora: {name}boquilla {noz} mm · capa {lay} mm · {bed} · calidad '
+                                     f'{w["quality"].currentText()} · <a href="#">cambiar</a> (Avanzado › Impresora '
+                                     f'o el asistente)')
             self.printer_lbl.setVisible(w['target'].currentText() != 'real')
         st = getattr(self, 'stats', None)
         if st is None or not hasattr(self, 'plan_lbl'):
@@ -3573,7 +3695,7 @@ class MainWindow(QMainWindow):
         t['layers'].setText(f'<span style="color:{lay_col}">{r.relief_depth:.{0 if r.mode == "objeto" else 1}f} mm · '
                             f'{nl:.0f} capas</span>')
         t['pla'].setText(f'≈ {r.grams_pla * (1 if r.hollow else 0.3):,.0f} g')
-        if relief.is_real(prm):                     # copia a tamaño real: medida y volumen, ni capas ni PLA
+        if relief.is_real(prm):                     # copia sin impresora: medida y volumen, ni capas ni PLA
             self.tile_caps['pla'].setText('Volumen')
             t['layers'].setText(f'<span style="color:{C["navy"]}">{_len_txt(r.relief_depth)}</span>')
             t['pla'].setText(relief.fmt_vol(r.volume))
@@ -3697,10 +3819,11 @@ class MainWindow(QMainWindow):
         if self.result is None:
             return
         prefer = 'stl'
-        if relief.is_real(self.last_prm):          # copia a tamaño real: el formato según el uso
+        if relief.is_real(self.last_prm):          # copia sin impresora: el formato según el uso
             prefer = {'cnc': 'stl', 'gran formato': '3mf'}.get(self.last_prm.use, 'ply')
         stem = os.path.splitext(self.path)[0] if self.path else 'relieve'
-        base = stem + ('_1a1' if relief.is_real(self.last_prm) else '') + relief.EXT[prefer]
+        tag = relief.scale_txt(relief.real_scale(self.last_prm)).replace(':', 'a').replace('.', ',')
+        base = stem + (f'_{tag}' if relief.is_real(self.last_prm) else '') + relief.EXT[prefer]
         path, kind = self._ask_format('Guardar malla', base, prefer)
         if path:
             sz = relief.file_sizes(len(self.result.verts), len(self.result.tris), self.result.vcolors is not None)

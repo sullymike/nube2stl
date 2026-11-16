@@ -68,9 +68,9 @@ STEPS = [('inicio', 'Nube de puntos', 'Empezamos',
           'El asistente te hace unas preguntas y rellena los parámetros por ti. No cambia nada hasta el final: '
           'entonces verás un resumen y podrás seguir retocando en las pestañas como siempre.'),
          ('destino', 'Para qué', '¿Para qué es?',
-          'Una réplica para tu impresora (a escala, con su boquilla y su cama) o una copia digital a tamaño real '
-          '(para archivarla, fresarla, imprimirla por piezas en gran formato o medir). Las preguntas siguientes '
-          'cambian según lo que elijas.'),
+          'Una réplica para tu impresora (a escala, con su boquilla y su cama) o una copia sin impresora, a tamaño '
+          'real o a la escala que quieras (para archivarla, fresarla, imprimirla por piezas en gran formato o '
+          'medir). Las preguntas siguientes cambian según lo que elijas.'),
          ('tipo', 'Qué es', '¿Qué has escaneado?',
           'Esto decide cómo se construye la pieza. Si dudas, mira la nube en la ventana principal (pestaña «Nube de '
           'puntos»): qué partes tienen puntos y cuáles no.'),
@@ -87,9 +87,9 @@ STEPS = [('inicio', 'Nube de puntos', 'Empezamos',
          ('tamano', 'Tamaño', '¿De qué tamaño la quieres?',
           'El tamaño decide la escala, si cabe en la cama y cuántas capas ocupará el relieve. El cálculo se '
           'actualiza al momento.'),
-         ('real', 'Tamaño real', 'Copia a tamaño real',
-          'A 1:1 no hay impresora que mande: las unidades tienen que ser seguras, el detalle es el del escaneo (en '
-          'mm reales) y la simplificación depende del uso.'),
+         ('real', 'Copia', 'Copia sin impresora',
+          'Sin impresora que mande: las unidades tienen que ser seguras (la escala es exacta), el detalle es el del '
+          'escaneo y la simplificación depende del uso.'),
          ('resumen', 'Resumen', 'Resumen',
           'Esto es lo que va a cambiar en las pestañas. Puedes volver atrás o aplicarlo; después podrás retocar '
           'cualquier valor a mano.')]
@@ -371,14 +371,15 @@ class Asistente(QDialog):
         lay.addSpacing(14)
         lay.addWidget(self._note(
             '<b>Qué vas a decidir</b><ol>'
-            '<li><b>Para qué:</b> una réplica para tu impresora o una copia a tamaño real.</li>'
+            '<li><b>Para qué:</b> una réplica para tu impresora o una copia sin impresora (1:1 o a escala).</li>'
             '<li><b>Qué has escaneado:</b> una cara en relieve, plana o sobre una columna; grabados sobre una '
             'roca; un bloque con sus laterales; un objeto por todos los lados, o un terreno o edificio.</li>'
             '<li><b>Qué quieres hacer:</b> copia, placa o molde; maqueta o fachada. Solo si hay donde elegir.</li>'
             '<li><b>Impresora:</b> filamento o resina, boquilla, capa y cama.</li>'
             '<li><b>Estado del escaneo:</b> letras finas, relieve gastado, ruido o partes que vuelan.</li>'
             '<li><b>Tamaño:</b> recuerdo, normal, exposición o a medida, con el cálculo de escala, cama y capas al '
-            'momento. En una copia a tamaño real, en vez de impresora y tamaño: unidades, uso y detalle.</li></ol>'
+            'momento. En una copia sin impresora, en vez de impresora y tamaño: unidades, escala, uso y detalle.</li>'
+            '</ol>'
             'Las preguntas cambian según lo que elijas: por ejemplo, el marco solo se pregunta para placas y moldes, '
             'y la boquilla solo en impresoras de filamento.', 'wizIntro'))
         lay.addStretch(1)
@@ -388,10 +389,10 @@ class Asistente(QDialog):
         opts = (('imprimir', 'Imprimir una réplica',
                  'A escala, para tu impresora 3D: el tamaño, la boquilla, la capa y la cama deciden el detalle y la '
                  'simplificación. Lo normal para piezas de museo, recuerdos o prácticas.'),
-                ('real', 'Copia a tamaño real (1:1)',
-                 'Sin reducir: para archivarla y verla, fresarla en CNC, imprimirla por piezas en gran formato o '
-                 'medir sobre ella. Sin impresora ni escala: el detalle y la simplificación van en mm reales. La '
-                 'malla sale cerrada (con base).'))
+                ('real', 'Copia sin impresora (1:1 o a escala)',
+                 'A tamaño real o a la escala exacta que elijas (1:10, 1:50, 2:1…): para archivarla y verla, fresarla '
+                 'en CNC, imprimirla por piezas en gran formato o medir sobre ella. Sin boquilla ni cama: el detalle '
+                 'es el del escaneo y la simplificación depende del uso. La malla sale cerrada (con base).'))
         for key, title, desc in opts:
             rb = QRadioButton(title)
             rb.setObjectName('optTitle')
@@ -415,14 +416,28 @@ class Asistente(QDialog):
         self._refresh_side()
 
     def _leave_destino(self):
-        if not relief.is_real(self.p) or self.stats is None:
+        if relief.is_real(self.p) and self.p.base == Params().base:
+            self._auto_base()
+
+    def _auto_base(self):
+        """Base proporcional a la pieza (copia sin impresora), con la escala elegida."""
+        if self.stats is None:
             return
-        base = self.main._real_base(max(self.stats['length'], self.stats['width']))
-        if self.p.base == Params().base and base > self.p.base:
-            self._set('base', base, 'Base proporcional a una pieza a tamaño real')
+        L = max(self.stats['length'], self.stats['width']) * relief.real_scale(self.p)
+        self._base_auto = relief.real_base(L)
+        self._set('base', self._base_auto, f'Base proporcional a la pieza ({relief.fmt_len(L)})')
+        if getattr(self, 'w_rbase', None) is not None:
+            self.w_rbase.blockSignals(True)
+            self.w_rbase.setValue(self._base_auto)
+            self.w_rbase.blockSignals(False)
+
+    def _real_ratio(self):
+        if self.p.base == getattr(self, '_base_auto', None):      # la base la puso el asistente: que siga a la escala
+            self._auto_base()
+        self._update_real()
 
     def _page_real(self, lay, forward):
-        why = 'Copia a tamaño real'
+        why = 'Copia sin impresora'
         li = getattr(self.main, 'load_info', None) or {}
         m = self.main
         if m.xyz is not None:
@@ -445,17 +460,23 @@ class Asistente(QDialog):
             self.lbl_units = self._note('')
             lay.addWidget(self.lbl_units)
             lay.addSpacing(8)
-        lay.addWidget(self._note('<b>2. Para qué es</b>', 'optTitle'))
+        lay.addWidget(self._note('<b>2. Escala y uso</b>', 'optTitle'))
         form = QFormLayout()
+        w_ratio = self._param_widget('ratio', why, self._real_ratio)
+        w_ratio.setSpecialValueText('1:1 (tamaño real)')
+        form.addRow(self.label('ratio'), w_ratio)
         form.addRow(self.label('use'), self._param_widget('use', why, self._update_real))
         form.addRow(self.label('res'), self._param_widget('res', why, self._update_real))
-        if self.p.mode not in ('objeto', 'bloque'):
-            form.addRow(self.label('base'), self._param_widget('base', why, self._update_real))
+        self.w_rbase = None
+        if self.p.mode != 'bloque' and (self.p.mode != 'objeto' or self.p.ground):
+            self.w_rbase = self._param_widget('base', why, self._update_real)
+            form.addRow(self.label('base'), self.w_rbase)
         lay.addLayout(form)
         lay.addWidget(self._note(
-            '<b>archivo</b>: con color (PLY u OBJ) · <b>cnc</b>: STL · <b>gran formato</b>: 3MF, a trocear en el '
-            'laminador · <b>medir</b>: casi sin simplificar. <b>Resolución</b> auto = la del escaneo; en los tipos 3D '
-            'Poisson pone su propio límite, que se ve debajo.'))
+            '<b>Escala</b>: 1 = tamaño real, 10 = 1:10, 0,5 = el doble. <b>archivo</b>: con color (PLY u OBJ) · '
+            '<b>cnc</b>: STL · <b>gran formato</b>: 3MF, a trocear en el laminador · <b>medir</b>: casi sin '
+            'simplificar. <b>Resolución</b> auto = la del escaneo; en los tipos 3D Poisson pone su propio límite, que '
+            'se ve debajo.'))
         lay.addSpacing(6)
         self.lbl_plan = self._note('', 'plan')
         lay.addWidget(self.lbl_plan)
@@ -465,9 +486,9 @@ class Asistente(QDialog):
     def _units(self, u):
         li = getattr(self.main, 'load_info', None) or {}
         if u == li.get('units') and self.base.units == 'auto':     # las supuestas: sin releer la nube
-            self._set('units', 'auto', 'Unidades confirmadas para el tamaño real')
+            self._set('units', 'auto', 'Unidades confirmadas para la copia')
         else:
-            self._set('units', u, 'Unidades confirmadas para el tamaño real')
+            self._set('units', u, 'Unidades confirmadas para la copia')
         self._update_real()
 
     def _update_real(self):
@@ -946,6 +967,7 @@ class Asistente(QDialog):
         changed = [f for f in Params.__dataclass_fields__ if getattr(self.base, f) != getattr(self.p, f)]
         gen = self._gen_wanted()
         self.main.set_params(self.p)
+        self.main._fill_printer_cb(reload=True)        # por si se ha guardado o borrado una impresora propia
         self.main.say('Asistente: ' + (', '.join(f'{self.label(f)} = {self.fmt(f, getattr(self.p, f))}'
                                                  for f in changed) or 'sin cambios'))
         self.accept()

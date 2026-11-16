@@ -772,27 +772,31 @@ y dejan de medir lo que pusiste.</p>
 mayor final (que se desactiva). Es lo que conviene para documentar y comparar réplicas, porque la escala queda redonda
 y consta en la ficha PDF. Necesita que las <a href="#p-units">unidades de la nube</a> sean las correctas.</p>
 <p class="ej"><b>Valores de ejemplo:</b> 1 (tamaño real) · 2, 5, 10 · 20 para piezas grandes.</p>
-<h3 id="p-target">Destino: imprimir una réplica o copia a tamaño real</h3>
+<h3 id="p-target">Destino: imprimir una réplica o copia sin impresora</h3>
 <p class="def">Botones de arriba del panel Parámetros · por defecto «Imprimir una réplica»</p>
 <p><b>Imprimir una réplica</b> es lo de siempre: una pieza a escala para la impresora, con el tamaño, la boquilla, las
 capas y la cama de la impresora mandando sobre el detalle y la simplificación.</p>
-<p><b>Copia a tamaño real</b> es una copia digital 1:1 que no va a la impresora tal cual: para archivarla y verla,
-fresarla, imprimirla en gran formato por piezas o medir sobre ella. Cambia esto:</p>
+<p><b>Copia sin impresora</b> es una copia digital que no va a tu impresora tal cual: para archivarla y verla,
+fresarla, imprimirla en gran formato por piezas (o en un servicio externo) o medir sobre ella. Por defecto a
+<b>tamaño real (1:1)</b>, o a la escala exacta que pongas en <a href="#p-ratio">Escala 1:</a> (10 = 1:10, 50 = 1:50 para
+una maqueta, 0,5 = el doble). Cambia esto:</p>
 <ul>
-  <li><b>Escala 1</b>: el lado mayor y la escala desaparecen.</li>
+  <li><b>Escala exacta</b>: el lado mayor desaparece; manda la escala (sin fijar, 1:1).</li>
   <li><b>Sin impresora</b>: boquilla, capa, cama y calidad no cuentan (ni se ven). El detalle es el del escaneo (o la
-      <a href="#p-res">resolución</a> que fijes), en mm reales.</li>
-  <li><b>Simplificación en mm reales</b>: el error admisible es una fracción de la celda según el <a href="#p-use">uso</a>
-      (la cuarta parte; al medir, la vigésima), no media boquilla.</li>
+      <a href="#p-res">resolución</a> que fijes); el plan lo da en mm de la pieza y, si hay escala, también del
+      original.</li>
+  <li><b>Simplificación según el escaneo</b>: el error admisible es una fracción de la celda (en la pieza) según el
+      <a href="#p-use">uso</a> (la cuarta parte; al medir, la vigésima), no media boquilla.</li>
   <li><b>Sin <a href="#p-boost">realce</a></b>: la copia es fiel.</li>
-  <li><b>Base proporcional</b>: al elegirlo, si la base estaba en 3 mm pasa a medio por ciento del lado mayor
-      (entre 3 y 200 mm): 3 mm bajo una piedra de 37 m serían una lámina.</li>
-  <li><b>Unidades seguras</b>: si están en «auto», se preguntan (con lo que mediría la pieza en cada una). A escala
-      reducida un error de unidades se nota poco; a 1:1 es el resultado entero.</li>
+  <li><b>Base proporcional</b>: al elegirlo, si la base estaba en 3 mm pasa a medio por ciento del lado mayor de la
+      pieza (entre 3 y 200 mm): 3 mm bajo una piedra de 37 m serían una lámina. Si cambias la escala, la base la sigue
+      (mientras no la toques a mano).</li>
+  <li><b>Unidades seguras</b>: si están en «auto», se preguntan (con lo que mediría la pieza en cada una). Con el lado
+      mayor un error de unidades no se nota; con una escala exacta es el resultado entero.</li>
 </ul>
 <p>La pestaña Tamaño enseña entonces la medida real (en m o cm), el detalle, <b>hasta dónde llega Poisson</b> en los
 tipos 3D (en piezas muy grandes no baja de unos 20 mm con la profundidad automática: pedir menos resolución no da más
-detalle) y la simplificación. Al guardar, propone el formato del uso y añade «_1a1» al nombre.</p>
+detalle) y la simplificación. Al guardar, propone el formato del uso y añade la escala al nombre («_1a1», «_1a50»).</p>
 <p><b>Para el máximo detalle</b> de una pieza grande: <a href="#p-res">Resolución</a> de unos 20 mm (Poisson sube
 entonces a profundidad 11, su máximo automático). Si la nube viene de una malla (OBJ, STL, PLY con caras), el
 <a href="#p-denoise">Alisado (3D)</a> no se aplica: los puntos sacados de una malla no tienen ruido de medida. En el
@@ -800,8 +804,8 @@ acueducto de 37 m (malla de 242 000 vértices, aristas de unos 5 cm) la copia qu
 (mediana) con resolución 20, en unos 4 minutos y 7 GB; con los valores automáticos, a unos 6 mm en menos de un minuto.</p>
 <p>Las mallas y nubes <b>georreferenciadas</b> (coordenadas UTM) se llevan a un origen cercano al leerlas, para no
 perder precisión (el registro dice qué origen se ha restado).</p>
-<h3 id="p-use">Uso (tamaño real)</h3>
-<p class="def">Solo con «Copia a tamaño real» · por defecto archivo</p>
+<h3 id="p-use">Uso (copia sin impresora)</h3>
+<p class="def">Solo con «Copia sin impresora» · por defecto archivo</p>
 <ul>
   <li><b>archivo</b>: guardarla y verla; propone PLY (con el color de la nube).</li>
   <li><b>cnc</b>: fresarla; propone STL.</li>
@@ -1034,6 +1038,14 @@ filamento con boquilla de 0,4 las letras se empastan.</p>
 <h3 class="grupo">Pestaña Avanzado</h3>
 <p class="def">Lo normal es no tocarlos: se calculan solos a partir de la impresora y del escaneo.</p>
 <h4 class="grupo">Impresora</h4>
+<h3 id="p-printer">Impresora</h3>
+<p class="def">Avanzado › Impresora · lista desplegable</p>
+<p>Elige tu impresora y se rellenan la boquilla, la capa y la cama de debajo. La lista es la misma que la del
+asistente: las impresoras guardadas en nube2stl, las que haya en tus laminadores (OrcaSlicer, Bambu Studio,
+PrusaSlicer, SuperSlicer, Cura; solo se leen) y unos modelos habituales. Si cambias a mano alguno de los valores, pasa a
+«A mano»; si coinciden con los de una impresora de la lista, se marca esa. El botón ⟳ vuelve a leer los laminadores.
+Para guardar una impresora propia, usa el paso Impresora del asistente. La pestaña Tamaño dice qué impresora se está
+usando. Con el destino «Copia sin impresora» no se ve.</p>
 <h3 id="p-nozzle">Boquilla</h3>
 <p class="def">mm · por defecto 0,4</p>
 <p>Diámetro de la boquilla de la impresora. Una impresora FDM no reproduce detalles horizontales menores que

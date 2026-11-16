@@ -9,12 +9,17 @@ GITHUB_REPO = 'sullymike/nube2stl'
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
     ('0.22.0', 'noviembre 2026', [
-        'Copia a tamaño real: dos botones arriba del panel Parámetros, «Imprimir una réplica» y «Copia a tamaño '
-        'real». La segunda hace una copia 1:1 para archivo, fresado, gran formato o medir: sin impresora ni realce, '
-        'detalle del escaneo en mm reales, simplificación según el uso (nuevo parámetro «Uso»), base proporcional, y '
-        'en Tamaño la medida real y hasta dónde llega Poisson. Al guardar propone el formato del uso',
-        'Asistente: empieza preguntando «¿Para qué es?»; la copia a tamaño real tiene su propio paso (unidades, uso '
-        'y detalle) en lugar de Impresora y Tamaño',
+        'Copia sin impresora: dos botones arriba del panel Parámetros, «Imprimir una réplica» y «Copia sin '
+        'impresora». La segunda hace una copia para archivo, fresado, gran formato o medir, a tamaño real o a la '
+        'escala exacta que se fije (1:10, 1:50, 2:1…): sin boquilla, cama ni realce, detalle del escaneo, '
+        'simplificación según el uso (nuevo parámetro «Uso»), base proporcional a la pieza, y en Tamaño la medida, '
+        'el detalle (en la pieza y en el original) y hasta dónde llega Poisson. Al guardar propone el formato del uso '
+        'y pone la escala en el nombre',
+        'Asistente: empieza preguntando «¿Para qué es?»; la copia sin impresora tiene su propio paso (unidades, '
+        'escala, uso y detalle) en lugar de Impresora y Tamaño',
+        'Avanzado › Impresora: lista para elegir la impresora (las guardadas, las de OrcaSlicer, Bambu Studio, '
+        'PrusaSlicer o Cura y modelos habituales), como en el asistente; rellena boquilla, capa y cama, y la pestaña '
+        'Tamaño dice cuál se usa',
         'Unidades dudosas: si las supuestas pueden estar mal (una malla de fotogrametría de 37 «mm», una pieza de '
         'menos de 5 cm, algo tomado por metros), al abrir la nube se pregunta, diciendo cuánto mediría en cada unidad',
         '«Profundidad máx.» automática (nuevo valor por defecto): 250 mm, o la cuarta parte del lado mayor de la cara '
