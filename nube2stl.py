@@ -55,6 +55,9 @@ PREVIEW_PTS = 1_000_000          # puntos de la nube que se dibujan
 MESH_PREVIEW_TRIS = 1_500_000    # por encima, la vista previa usa una malla aligerada
 OOM_MSG = ('El sistema ha cerrado el proceso de reconstrucción, casi seguro por falta de memoria. '
            'Cierra otros programas, aumenta la resolución o baja la profundidad de Poisson.')
+OOM_KEY = 'por falta de memoria'  # está en los dos avisos (el del sistema y el de la vigilancia de run_external)
+MEM_GUARD_GB = 1.5                # memoria libre mínima: por debajo, se para la reconstrucción antes de que el
+                                  # sistema llene el swap (el equipo se queda atascado) y la mate él
 
 # ====================================================================== interfaz gráfica
 from PyQt5.QtCore import QElapsedTimer, QRectF, Qt, QThread, QTimer, QUrl, pyqtSignal  # noqa: E402
@@ -670,21 +673,84 @@ def run_external(path, prm, log, job):
         job.proc = subprocess.Popen(relief.helper_cmd('proceso', path, pj, out), stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                                     bufsize=1, creationflags=relief.NO_WINDOW)
-        tail = []
+        tail, said = [], []
+        mem = _watch_memory(job)
         for line in job.proc.stdout:
             line = line.rstrip()
             tail = (tail + [line])[-15:]
             if line and not line.startswith(('Traceback', '  File', '    ')):
                 log(line)
+                said.append(line)
+                mem['step'] = line
         rc = job.proc.wait()
         job.proc = None
-        if job.cancelled:
+        mem['done'] = True
+        if job.cancelled and not mem.get('stopped'):
             raise RuntimeError('Cancelado por el usuario')
         if rc != 0:
+            kept = _keep_failure(pj, said, mem)
+            used = (f'El proceso llegaba a {mem["peak"]:.1f} GB' + (f' (estimado: {mem["est"]:.1f} GB)'
+                                                                     if mem.get('est') else ''))
+            where = f' Iba por: «{mem["step"][:160]}».' if mem.get('step') else ''
+            if mem.get('stopped'):
+                raise RuntimeError(f'Reconstrucción parada {OOM_KEY}: {used} y en el equipo quedaban '
+                                   f'{mem["stopped"]:.1f} GB libres.{where} Ajustes del intento: {kept}')
             if rc in (-9, 137):
-                raise RuntimeError(OOM_MSG)
+                raise RuntimeError(f'{OOM_MSG} {used}.{where} Ajustes del intento: {kept}')
             raise RuntimeError('Error en la reconstrucción:\n' + '\n'.join(tail[-6:]))
         return proceso.load_result(out)
+
+
+def _watch_memory(job):
+    """Vigila en segundo plano la memoria del proceso de reconstrucción (y de los que lance él): apunta el pico y,
+    si la memoria libre del equipo baja de MEM_GUARD_GB, lo para (mejor un aviso claro que el equipo atascado
+    llenando el swap hasta que el sistema lo mate)."""
+    import threading
+    mem = {'peak': 0.0, 'stopped': None, 'step': '', 'done': False, 'est': getattr(job, 'est', None)}
+    try:
+        import psutil
+        root = psutil.Process(job.proc.pid)
+    except Exception:
+        return mem
+
+    def loop():
+        while not mem['done'] and job.proc is not None and job.proc.poll() is None:
+            try:
+                procs = [root] + root.children(recursive=True)
+                rss = sum(q.memory_info().rss for q in procs) / 2**30
+            except psutil.Error:
+                rss, procs = mem['peak'], []
+            mem['peak'] = max(mem['peak'], rss)
+            av, _ = relief.memory_available()
+            if av is not None and av < MEM_GUARD_GB and rss > 1.0:
+                mem['stopped'] = av
+                job.cancelled = True
+                for q in reversed(procs):
+                    try:
+                        q.kill()
+                    except psutil.Error:
+                        pass
+                return
+            time.sleep(0.25)
+    threading.Thread(target=loop, daemon=True).start()
+    return mem
+
+
+def _keep_failure(pj, said, mem):
+    """Guarda los ajustes y el registro de una reconstrucción fallida (para repetirla o enviarla)."""
+    import shutil
+    import registro
+    folder = os.path.dirname(registro.config_file())
+    try:
+        os.makedirs(folder, exist_ok=True)
+        dst = os.path.join(folder, 'ultimo_fallo.json')
+        shutil.copy(pj, dst)
+        with open(os.path.join(folder, 'ultimo_fallo.txt'), 'w', encoding='utf-8') as f:
+            f.write(f'pico {mem["peak"]:.2f} GB · estimado {mem.get("est")} · parado con {mem.get("stopped")} GB libres\n')
+            f.write('\n'.join(said[-60:]) + '\n')
+        return dst
+    except OSError:
+        return '(no se han podido guardar)'
 
 
 def recon_task(path, prm, job, log):
@@ -2433,7 +2499,7 @@ class MainWindow(QMainWindow):
             self.say(msg)
             return
         self.say('ERROR: ' + msg)
-        if msg.startswith(OOM_MSG[:30]) and getattr(self, 'stats', None) is not None:
+        if OOM_KEY in msg and getattr(self, 'stats', None) is not None:
             # corte por falta de memoria: la misma ventana, con los parámetros que bajan el consumo
             if self.check_memory(self.params(), failed=True):
                 QTimer.singleShot(0, self.run_recon)
@@ -3280,6 +3346,10 @@ class MainWindow(QMainWindow):
                 return
             self.say('--- Generando superficie')
         self.job = Job()
+        try:                                       # para comparar con lo que de verdad gasta (run_external)
+            self.job.est = relief.memory_estimate(self.stats, prm, len(self.xyz))['gb']
+        except Exception:
+            self.job.est = None
         self.last_prm = self.params()
         self.next_is_preview = preview
         self.run_log_start = len(self.log.toPlainText())
