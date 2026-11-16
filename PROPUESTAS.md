@@ -316,6 +316,13 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
     punto del escaneo a menos de 3 separaciones o 2 celdas. El acueducto pasa de «95 % a menos de 220 mm» a 14 mm.
   - Máximo detalle del acueducto: resolución 20 y alisado 0 → mediana de 3 mm a la malla original (7 mm con los
     automáticos), 4 min y 7 GB.
+- **Revisión de todo el proceso a 1:1** (después):
+  - A 1:1 la resolución automática es la del escaneo, así que el alisado del ruido se aplicaba siempre con su radio
+    entero (a escala de impresora casi nunca, porque el submuestreo ya promedia). En una malla no hay ruido de
+    medida: ya no se alisa (`mesh=True` en `relief.reconstruct`). Acueducto automático: de 7,7 a 5,6 mm de mediana.
+  - Las mallas georreferenciadas no restaban el origen antes de pasar a float32 (las nubes sí).
+  - Base: en la consola o con ajustes guardados quedaba en 3 mm; aviso con el valor proporcional (`real_base`).
+  - Volúmenes y medidas legibles (`fmt_vol`, `fmt_len`) en registro, ficha, consola y resultado.
 - **Límites.**
   - La malla sigue saliendo cerrada (con base o trasera): una superficie abierta tal cual (sin base) para
     archivo no está hecha.

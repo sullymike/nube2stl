@@ -1142,6 +1142,34 @@ class TamanoReal(unittest.TestCase):
         self.assertEqual(r.bad_edges, 0)
         self.assertLess(len(r.tris), 200_000)                         # se ha simplificado
 
+    def test_malla_georreferenciada(self):
+        """Una malla OBJ en UTM (440 000, 4 500 000 m): se resta el origen antes de pasar a float32, como en las
+        nubes. Sin eso, a esas coordenadas float32 solo distingue medio metro y una copia a 1:1 sale en escalones."""
+        import entrada
+        g = np.mgrid[0:30, 0:30].reshape(2, -1).T * 0.05                   # rejilla de 5 cm, 1,5 m de lado
+        V = np.c_[g + [440000.0, 4500000.0], 600 + 0.01 * np.sin(g[:, 0] * 20)]
+        F = np.array([[i * 30 + j, i * 30 + j + 1, (i + 1) * 30 + j] for i in range(29) for j in range(29)])
+        path = os.path.join(TMP, 'utm.obj')
+        _write(path, ''.join(f'v {x:.4f} {y:.4f} {z:.4f}\n' for x, y, z in V)
+               + ''.join(f'f {a + 1} {b + 1} {c + 1}\n' for a, b, c in F))
+        P, _, _, kind = entrada.read_any(path)
+        self.assertEqual(kind, 'malla')
+        self.assertIsNotNone(entrada.read_any.origin)
+        self.assertLess(float(np.abs(P).max()), 1e4)
+        x = np.unique(np.round(P[:, 0], 3))
+        self.assertGreater(len(x), 100)                 # sigue habiendo detalle de milímetros
+
+    def test_malla_sin_alisado(self):
+        """Los puntos sacados de una malla no tienen ruido de medida: no se alisan (a 1:1 el alisado se comía
+        hasta 2 cm del detalle del acueducto)."""
+        logs = []
+        rng = np.random.default_rng(2)
+        u, v = rng.uniform(0, 2 * np.pi, 30_000), rng.uniform(-1, 1, 30_000)
+        xyz = np.c_[500 * np.sqrt(1 - v ** 2) * np.cos(u), 500 * np.sqrt(1 - v ** 2) * np.sin(u), 500 * v]
+        relief.reconstruct(xyz.astype(np.float32), relief.Params(mode='objeto', target='real', simplify=100),
+                           log=logs.append, mesh=True)
+        self.assertTrue(any('puntos salen de una malla' in s for s in logs))
+
     def test_tamano_real_sin_realce(self):
         """El realce de lo pequeño no se aplica a una copia fiel."""
         h = np.random.default_rng(1).normal(0, 0.1, (40, 40))

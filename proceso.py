@@ -47,8 +47,9 @@ def main(ply, params_json, out):
     log = lambda s: print(s, flush=True)  # noqa: E731
     prm = relief.Params.from_json(open(params_json, encoding='utf-8').read())
     import entrada
-    xyz, rgb, nrm, _ = entrada.load_points(ply, prm, log)
-    r = relief.reconstruct(xyz, prm, rgb, log, normals=nrm if prm.mode == 'objeto' else None)
+    xyz, rgb, nrm, info = entrada.load_points(ply, prm, log)
+    r = relief.reconstruct(xyz, prm, rgb, log, normals=nrm if prm.mode == 'objeto' else None,
+                           mesh=info.get('kind') == 'malla')
     del xyz, rgb, nrm
     save_result(out, r)
 

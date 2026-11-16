@@ -374,7 +374,7 @@ def _top_grid(verts, n=400):
     return g, cell
 
 
-def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None):
+def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=False):
     o3d = recon3d._need_o3d()
     for name, why in (('negative', 'el molde'), ('frame', 'el marco'), ('auto_straighten', 'el enderezado')):
         if getattr(prm, name):
@@ -406,6 +406,7 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None):
         zc = zmin - max(prm.base, 0.2) / s
         pc = pc.select_by_index(np.flatnonzero(Pg[:, 2] >= zmin))
         sk, skn, nb, area, sk_cell = _ground_skirt(np.asarray(pc.points), res, zc)
+        relief.warn_thin_base(prm, max(st['ext']), log)
         log(f'Abierto por abajo: paredes en el contorno y base plana {prm.base:g} mm bajo el punto más bajo '
             f'({len(sk) - nb:,} + {nb:,} puntos sintéticos; planta de {area * s * s / 100:.1f} cm²'
             + (f'; cada {sk_cell:.3g}, no {res:.3g}, para no pasar del doble de los puntos de la nube)'
@@ -425,7 +426,10 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None):
     else:
         log('Normales: estimando y orientando hacia fuera…')
         _orient_normals(o3d, pc, res, log, extra=sk)
-    denoise_points(pc, res, pl['res_scan'], prm.denoise, log)
+    if mesh and prm.denoise > 0:
+        log('Alisado del ruido: no se aplica, los puntos salen de una malla (no tienen ruido de medida que alisar)')
+    else:
+        denoise_points(pc, res, pl['res_scan'], prm.denoise, log)
 
     # ---------------- base plana
     P = np.asarray(pc.points)
@@ -496,7 +500,7 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None):
         tris = tris[:, ::-1].copy()
         vol = -vol
     sx, sy, sz = np.ptp(verts, 0)
-    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {vol / 1000:.1f} cm³, '
+    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {relief.fmt_vol(vol)}, '
         f'{sx:.1f} × {sy:.1f} × {sz:.1f} mm')
     grid, cell = _top_grid(verts)
     T = relief.affine(s * M, -s * (M @ c0 + vmin))

@@ -189,11 +189,13 @@ def make_pdf(path, r, prm, source=None, log_text='', label_fn=None):
             ax = fig.add_axes([0.06 + (i % 2) * 0.46, 0.685 - (i // 2) * 0.225, 0.42, 0.21])
             _view(ax, Vc, F, _rot(az, el), tt)
         scale = (f'1:{1 / r.scale:.3g}' if r.scale < 1 else f'{r.scale:.3g}:1') if r.scale else '—'
-        piece = [('Medidas', f'{sx:.1f} × {sy:.1f} × {sz:.1f} mm'),
+        piece = [('Medidas', f'{sx:.1f} × {sy:.1f} × {sz:.1f} mm' if getattr(prm, 'target', '') != 'real' else
+                  ' × '.join(relief.fmt_len(x) for x in (sx, sy, sz))),
                  ('Escala', scale + (' (copia a tamaño real)' if getattr(prm, 'target', '') == 'real' else
                                     f' (fijada 1:{prm.ratio:g})' if prm.ratio > 0 else ' (por el lado mayor)')),
                  ('Método', r.mode),
-                 ('Volumen', f'{r.volume / 1000:,.1f} cm³ · PLA ' + ('(hueca)' if r.hollow else 'macizo')
+                 ('Volumen', relief.fmt_vol(r.volume) if getattr(prm, 'target', '') == 'real' else
+                  f'{r.volume / 1000:,.1f} cm³ · PLA ' + ('(hueca)' if r.hollow else 'macizo')
                   + f' ≈ {r.grams_pla:,.0f} g'),
                  ('Malla', f'{len(r.tris):,} triángulos · ' + ('cerrada' if r.bad_edges == 0 else
                                                               f'{r.bad_edges} aristas abiertas')),

@@ -214,6 +214,30 @@ def is_real(prm):
 REAL_TOL = {'archivo': 0.25, 'cnc': 0.25, 'gran formato': 0.25, 'medir': 0.05}
 
 
+def fmt_len(mm):
+    """Longitud legible: m (desde 2 m), cm (desde 10 cm) o mm."""
+    return f'{mm / 1000:.2f} m' if mm >= 2000 else f'{mm / 10:.1f} cm' if mm >= 100 else f'{mm:.1f} mm'
+
+
+def fmt_vol(mm3):
+    """Volumen legible: m³ (desde 0,1 m³), litros (desde 1 l) o cm³."""
+    return (f'{mm3 / 1e9:,.2f} m³' if mm3 >= 1e8 else f'{mm3 / 1e6:,.1f} l' if mm3 >= 1e6 else
+            f'{mm3 / 1000:,.1f} cm³')
+
+
+def real_base(L):
+    """Grosor de base razonable para una copia a tamaño real: 0,5 % del lado mayor, entre 3 y 200 mm."""
+    return float(min(200, max(3, round(0.005 * L / 5) * 5)))
+
+
+def warn_thin_base(prm, L, log):
+    """Aviso si, en una copia a tamaño real, la base es una lámina para el tamaño de la pieza (en la ventana se
+    pone proporcional al elegir el destino; desde la consola o con unos ajustes guardados, no)."""
+    if is_real(prm) and prm.base < 0.5 * real_base(L):
+        log(f'AVISO: base de {prm.base:g} mm bajo una pieza de {fmt_len(L)}: es una lámina. Para una copia a tamaño '
+            f'real conviene unos {real_base(L):g} mm (--base {real_base(L):g})')
+
+
 def by_length(prm):
     """¿La escala la fija el lado mayor final (target_len)? No con escala 1:N fijada ni a tamaño real."""
     return prm.target_len > 0 and getattr(prm, 'ratio', 0) <= 0 and not is_real(prm)
@@ -1276,10 +1300,10 @@ def grid_to_piece(hm, s, zs=1.0, shift=(0, 0, 0), z0=0.0, flipz=False):
     return affine(np.diag([s, s, k * s * zs]), [s * shift[0], s * shift[1], -k * s * zs * z0 + shift[2]]) @ hm.to_grid
 
 
-def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None):
+def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh=False):
     if prm.mode == 'objeto':
         import objeto3d
-        r = objeto3d.reconstruct_object(p, prm, rgb, normals, log)
+        r = objeto3d.reconstruct_object(p, prm, rgb, normals, log, mesh=mesh)
     elif prm.mode == 'bloque' and getattr(prm, 'corner', False):
         import esquina
         r = esquina.reconstruct_corner(p, prm, rgb, log)
@@ -1290,7 +1314,7 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None):
             r = recon3d.reconstruct3d(hm, prm, log)
         elif prm.mode == 'bloque':
             import bloque3d
-            r = bloque3d.reconstruct_block(hm, prm, log)
+            r = bloque3d.reconstruct_block(hm, prm, log, mesh=mesh)
         else:
             back = back_face(hm, prm, log) if getattr(prm, 'reverse', None) else None
             r = _reconstruct_25d(hm, prm, log, back)
@@ -1435,7 +1459,7 @@ def _reconstruct_25d(hm, prm, log, back=None):
         log(f'Pieza de dos caras: reverso de {lift:.1f} mm de relieve bajo un alma de {prm.base:g} mm')
     bad = _bad_edges(tris, len(verts))
     vol = _volume(verts, tris)
-    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {vol / 1000:.1f} cm³')
+    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {fmt_vol(vol)}')
     out = np.where(mask, hf + prm.base, np.nan)
     off = (F * res, F * res) if prm.frame > 0 else (0, 0)
     if prm.negative:

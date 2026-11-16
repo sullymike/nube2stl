@@ -412,8 +412,7 @@ REAL_FORMAT = {'archivo': 'PLY u OBJ, con color', 'cnc': 'STL (sin color)', 'gra
                'medir': 'PLY u OBJ'}
 
 
-def _len_txt(mm):
-    return f'{mm / 1000:.2f} m' if mm >= 2000 else f'{mm / 10:.1f} cm' if mm >= 100 else f'{mm:.1f} mm'
+_len_txt = relief.fmt_len
 
 
 def plan_html_real(st, prm, pl):
@@ -2255,8 +2254,7 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _real_base(L):
-        """Grosor de base razonable a tamaño real: medio por ciento del lado mayor, entre 3 y 200 mm."""
-        return float(min(200, max(3, round(0.005 * L / 5) * 5)))
+        return relief.real_base(L)
 
     def ask_units(self, force=False):
         """Unidades de la nube «auto» dudosas (o a tamaño real, siempre): cuadro con lo que mediría en cada una. Si
@@ -3578,7 +3576,7 @@ class MainWindow(QMainWindow):
         if relief.is_real(prm):                     # copia a tamaño real: medida y volumen, ni capas ni PLA
             self.tile_caps['pla'].setText('Volumen')
             t['layers'].setText(f'<span style="color:{C["navy"]}">{_len_txt(r.relief_depth)}</span>')
-            t['pla'].setText(f'{r.volume / 1e9:,.2f} m³' if r.volume >= 1e8 else f'{r.volume / 1e6:,.1f} dm³')
+            t['pla'].setText(relief.fmt_vol(r.volume))
         extra = ['<b>Método:</b> ' + ('esquina: un mapa de alturas por cara' if getattr(r, 'corner', False)
                                        else METHOD_NAME.get(r.mode, r.mode)),
                  f'<b>Escala:</b> {r.scale:.4f} · celda {r.cell:.3f} mm' + (f' · giro {r.angle:+.1f}°' if r.angle else ''),

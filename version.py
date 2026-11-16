@@ -22,6 +22,11 @@ HISTORY = [
         'Piezas de decenas de metros: la simplificación ya no deja la malla abierta (se hace con la malla reducida a '
         'una escala normal y luego se devuelve a su tamaño), y la fidelidad al escaneo solo mide donde hay escaneo '
         'cerca (antes, en piezas grandes, comparaba con la otra cara de un pilar o con el terreno desde la base)',
+        'Mallas (OBJ, STL, PLY con caras): no se les aplica el alisado del ruido, que a tamaño real se comía hasta 2 cm '
+        'de detalle; y si vienen georreferenciadas (UTM) se lleva el origen cerca antes de pasar a precisión simple, '
+        'como ya se hacía con las nubes (antes perdían hasta medio metro)',
+        'A tamaño real, el registro, la ficha y la consola dan medidas en m y volumen en m³ en vez de gramos de PLA, y '
+        'avisan si la base es una lámina para el tamaño de la pieza',
     ]),
     ('0.21.1', 'noviembre 2026', [
         'Piezas enormes a escala real (un acueducto de 37 m): «Abierto por abajo» ya no llena la memoria. Sus paredes '

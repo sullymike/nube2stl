@@ -100,7 +100,8 @@ def cli(argv):
         log('AVISO: ' + ('no cabe en la memoria disponible' if est['level'] == 'excede' else 'la memoria va justa')
               + '. Para bajar el consumo: ' + '; '.join(f'--{n} {v:g}' if isinstance(v, float) else f'--{n} {v}'
                                                                 for n, v, _ in sug if v is not None))
-    r = relief.reconstruct(xyz, prm, rgb, log=log, normals=nrm if prm.mode == 'objeto' else None)
+    r = relief.reconstruct(xyz, prm, rgb, log=log, normals=nrm if prm.mode == 'objeto' else None,
+                           mesh=info.get('kind') == 'malla')
     src = dict(info, path=os.path.abspath(a.entrada), points=npts)
     kind = 'stla' if a.ascii else None
     eid = None
@@ -116,7 +117,7 @@ def cli(argv):
         if eid:
             registro.update(eid, ficha=os.path.abspath(a.ficha))
     sx, sy, sz = r.size
-    mat = (f'{r.volume / 1e9:,.2f} m³' if relief.is_real(prm) else
+    mat = (relief.fmt_vol(r.volume) if relief.is_real(prm) else
            f'{r.grams_pla:.0f} g PLA {"(hueca)" if r.hollow else "macizo"}')
     print(f'Guardado {a.salida}: {sx:.1f} x {sy:.1f} x {sz:.1f} mm, {mat}, '
           f'{"cerrada" if r.bad_edges == 0 else "NO cerrada"}, {time.time() - t:.1f} s')

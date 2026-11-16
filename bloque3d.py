@@ -23,7 +23,7 @@ import recon3d
 import relief
 
 
-def reconstruct_block(hm, prm, log=lambda s: None):
+def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
     o3d = recon3d._need_o3d()
     for name, why in (('negative', 'el molde'), ('frame', 'el marco')):
         if getattr(prm, name):
@@ -94,7 +94,10 @@ def reconstruct_block(hm, prm, log=lambda s: None):
     # ---------------- normales de los puntos reales, con la caja sintética tapando los rayos
     log('Normales: estimando y orientando hacia fuera…')
     objeto3d._orient_normals(o3d, pc, res, log, extra=SP)
-    objeto3d.denoise_points(pc, res, hm.res_scan, prm.denoise, log)
+    if mesh and prm.denoise > 0:
+        log('Alisado del ruido: no se aplica, los puntos salen de una malla (no tienen ruido de medida que alisar)')
+    else:
+        objeto3d.denoise_points(pc, res, hm.res_scan, prm.denoise, log)
     syn = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(SP))
     syn.normals = o3d.utility.Vector3dVector(SN)
     if col is not None:
@@ -131,7 +134,7 @@ def reconstruct_block(hm, prm, log=lambda s: None):
         tris = tris[:, ::-1].copy()
         vol = -vol
     sx, sy, sz = np.ptp(verts, 0)
-    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {vol / 1000:.1f} cm³, '
+    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {relief.fmt_vol(vol)}, '
         f'{sx:.1f} × {sy:.1f} × {sz:.1f} mm (grosor del bloque {sz:.1f} mm)')
     out = np.where(mask, (top - zb) * s, np.nan)
     return relief.Result(verts, tris, vcol, out, res * s, s, hm.ang, bad, vol, mode='bloque',

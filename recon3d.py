@@ -32,6 +32,7 @@ def reconstruct3d(hm, prm, log=lambda s: None):
     floor = hm.floor
     s = relief.piece_scale(prm, (max(nu, nv) * res))
     zb = floor - prm.base / s                      # plano trasero (unidades de la nube)
+    relief.warn_thin_base(prm, max(nu, nv) * res, log)
 
     # ---------------- puntos reales dentro de la pieza y por delante del fondo
     X = hm.U - hm.u0
@@ -129,7 +130,7 @@ def reconstruct3d(hm, prm, log=lambda s: None):
     if vol < 0:                                           # normales hacia dentro: invertir orientación
         tris = tris[:, ::-1].copy()
         vol = -vol
-    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {vol / 1000:.1f} cm³')
+    log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {relief.fmt_vol(vol)}')
     out = np.where(mask, (np.where(mask & ~outside, top, floor) - zb) * s, np.nan)
     return relief.Result(verts, tris, vcol, out, res * s, s, hm.ang, bad, vol, mode='3d',
                          xform=relief.grid_to_piece(hm, s, prm.z_scale, (0, 0, prm.base), floor),

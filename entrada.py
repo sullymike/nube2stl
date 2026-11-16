@@ -329,7 +329,14 @@ def read_any(path, log=lambda s: None):
     read_any.origin = None                    # origen restado a las coordenadas georreferenciadas (unidades del fichero)
     read_any.classes = None                   # clase de cada punto (LAS), o None
     if 'F' in d:
-        V, F = d['V'], d['F']
+        V, F = np.asarray(d['V'], np.float64), d['F']
+        # malla georreferenciada (UTM en metros, típica de fotogrametría): restar el centro antes de pasar a float32,
+        # como con las nubes; si no, a 4 500 000 m la precisión de float32 es de medio metro
+        c = np.floor(np.median(V[:: max(1, len(V) // 100_000)], 0))
+        if np.abs(c).max() > 1e4:
+            log(f'Coordenadas grandes (georreferenciadas): se resta el origen {c[0]:.0f}, {c[1]:.0f}, {c[2]:.0f}')
+            V = V - c
+            read_any.origin = c
         P, rgb, nrm = sample_mesh(V, F, d.get('vcol'), d.get('uvcol'))
         log(f'Malla de {len(V):,} vértices y {len(F):,} triángulos: {len(P):,} puntos repartidos por su superficie'
             f' (con las normales de la malla' + (', y su color)' if rgb is not None else ')'))

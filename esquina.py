@@ -333,7 +333,7 @@ def reconstruct_corner(p, prm, rgb=None, log=lambda s: None):
     verts = ((V - lo) * s).astype(np.float64)
     bad = relief._bad_edges(T, len(verts))
     vol = relief._volume(verts, T)
-    log(f'{len(T):,} triángulos, aristas no-manifold: {bad}, volumen {vol / 1000:.1f} cm³')
+    log(f'{len(T):,} triángulos, aristas no-manifold: {bad}, volumen {relief.fmt_vol(vol)}')
     xform = relief.affine(s * R, -s * (R @ o) - s * lo)
     out = np.where(A['mask'], (A['grid'] - lo[2]) * s, np.nan)
     return relief.Result(verts, T.astype(np.int64), None, out, res * s, s, 0.0, bad, vol, mode='bloque',
