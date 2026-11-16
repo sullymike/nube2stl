@@ -488,7 +488,7 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None):
         z[z < zc + 0.5 * res] = zc                          # aplanar la base para que apoye bien en la cama
     vmin = verts.min(0)
     verts = verts - vmin
-    if prm.target_len > 0 and prm.ratio <= 0:             # escala exacta: el lado mayor de la malla final
+    if relief.by_length(prm):             # escala exacta: el lado mayor de la malla final
         s = prm.target_len / float(np.ptp(verts, 0).max())
     verts *= s
     vol = relief._volume(verts, tris)

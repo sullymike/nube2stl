@@ -116,7 +116,9 @@ def cli(argv):
         if eid:
             registro.update(eid, ficha=os.path.abspath(a.ficha))
     sx, sy, sz = r.size
-    print(f'Guardado {a.salida}: {sx:.1f} x {sy:.1f} x {sz:.1f} mm, {r.grams_pla:.0f} g PLA {"(hueca)" if r.hollow else "macizo"}, '
+    mat = (f'{r.volume / 1e9:,.2f} m³' if relief.is_real(prm) else
+           f'{r.grams_pla:.0f} g PLA {"(hueca)" if r.hollow else "macizo"}')
+    print(f'Guardado {a.salida}: {sx:.1f} x {sy:.1f} x {sz:.1f} mm, {mat}, '
           f'{"cerrada" if r.bad_edges == 0 else "NO cerrada"}, {time.time() - t:.1f} s')
     return 0 if r.bad_edges == 0 else 1
 

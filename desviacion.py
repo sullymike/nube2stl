@@ -46,12 +46,15 @@ def compute(r, p, log=lambda s: None, k=10):
     sp = np.median(cKDTree(Q[:200_000:max(1, len(Q) // 200_000)] if len(Q) > 200_000 else Q)
                    .query(Q[:20_000:max(1, len(Q) // 20_000)], 2)[0][:, 1])
     R = max(6 * sp, 3 * r.cell, 1.0)
+    near = max(3 * sp, 2 * r.cell, 0.5)  # sin un punto del escaneo a esta distancia, ese vértice no tiene escaneo
+    # (con R solamente, en piezas grandes a tamaño real se medía contra otra superficie a decenas de cm: la otra cara
+    # de un pilar, o el terreno desde la base añadida)
     tree = cKDTree(Q)
     dev = np.full(len(V), np.nan, np.float32)
     for i in range(0, len(V), 300_000):
         v, nv = V[i:i + 300_000], N[i:i + 300_000]
         d, j = tree.query(v, k, distance_upper_bound=R, workers=-1)
-        ok = np.isfinite(d).sum(1) >= 4                    # al menos 4 puntos del escaneo cerca
+        ok = (np.isfinite(d).sum(1) >= 4) & (d[:, 0] <= near)      # al menos 4 puntos del escaneo cerca
         if not ok.any():
             continue
         jj = j[ok]

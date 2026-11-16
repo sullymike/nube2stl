@@ -1128,6 +1128,20 @@ class TamanoReal(unittest.TestCase):
         imp = relief.print_plan(st, relief.Params(target_len=200))
         self.assertLess(imp['scale'], 1.0)                      # imprimir: lo de siempre
 
+    def test_objeto_a_tamano_real_no_se_reescala(self):
+        """Un objeto a tamaño real mide lo que la nube aunque el lado mayor diga 200 mm (salía de 200 mm), y se
+        simplifica sin abrirse aunque mida metros (PyMeshLab dejaba aristas abiertas con coordenadas tan grandes)."""
+        rng = np.random.default_rng(7)
+        n = 60_000
+        u, v = rng.uniform(0, 2 * np.pi, n), rng.uniform(-1, 1, n)
+        xyz = np.c_[3000 * np.sqrt(1 - v ** 2) * np.cos(u), 3000 * np.sqrt(1 - v ** 2) * np.sin(u),
+                    1500 * v].astype(np.float32)                       # un elipsoide de 6 × 6 × 3 m
+        p = relief.Params(mode='objeto', target='real', target_len=200, denoise=0)
+        r = relief.reconstruct(xyz, p)
+        self.assertAlmostEqual(float(np.ptp(r.verts, 0).max()), 6000, delta=200)
+        self.assertEqual(r.bad_edges, 0)
+        self.assertLess(len(r.tris), 200_000)                         # se ha simplificado
+
     def test_tamano_real_sin_realce(self):
         """El realce de lo pequeño no se aplica a una copia fiel."""
         h = np.random.default_rng(1).normal(0, 0.1, (40, 40))

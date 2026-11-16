@@ -308,6 +308,14 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
       (`relief.behind_mm`). Con 250 fijos, una fachada de 37 m perdía media nube.
 - **Medido.** Acueducto (830 000 puntos): en metros, objeto con base, «real»: 35,9 × 15,1 × 4,0 m, celda de
   44 mm (la del escaneo), Poisson profundidad 10 → 38,5 mm, base 180 mm, tolerancia 11 mm.
+- **Fallos que salieron al probarlo con el acueducto a 1:1** (corregidos en la misma versión):
+  - El modo objeto (y el marco y el reverso) seguían escalando al lado mayor de 200 mm: `relief.by_length`.
+  - PyMeshLab dejaba aristas abiertas al simplificar con coordenadas de decenas de metros en mm (16 aristas a 1:1,
+    ninguna a escala reducida): se simplifica con la malla llevada a 100 de lado (`DECIMATE_SIZE`).
+  - La fidelidad al escaneo medía hasta 6 separaciones de punto (38 cm), contra otra superficie: ahora pide un
+    punto del escaneo a menos de 3 separaciones o 2 celdas. El acueducto pasa de «95 % a menos de 220 mm» a 14 mm.
+  - Máximo detalle del acueducto: resolución 20 y alisado 0 → mediana de 3 mm a la malla original (7 mm con los
+    automáticos), 4 min y 7 GB.
 - **Límites.**
   - La malla sigue saliendo cerrada (con base o trasera): una superficie abierta tal cual (sin base) para
     archivo no está hecha.

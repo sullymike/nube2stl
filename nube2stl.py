@@ -3575,6 +3575,10 @@ class MainWindow(QMainWindow):
         t['layers'].setText(f'<span style="color:{lay_col}">{r.relief_depth:.{0 if r.mode == "objeto" else 1}f} mm · '
                             f'{nl:.0f} capas</span>')
         t['pla'].setText(f'≈ {r.grams_pla * (1 if r.hollow else 0.3):,.0f} g')
+        if relief.is_real(prm):                     # copia a tamaño real: medida y volumen, ni capas ni PLA
+            self.tile_caps['pla'].setText('Volumen')
+            t['layers'].setText(f'<span style="color:{C["navy"]}">{_len_txt(r.relief_depth)}</span>')
+            t['pla'].setText(f'{r.volume / 1e9:,.2f} m³' if r.volume >= 1e8 else f'{r.volume / 1e6:,.1f} dm³')
         extra = ['<b>Método:</b> ' + ('esquina: un mapa de alturas por cara' if getattr(r, 'corner', False)
                                        else METHOD_NAME.get(r.mode, r.mode)),
                  f'<b>Escala:</b> {r.scale:.4f} · celda {r.cell:.3f} mm' + (f' · giro {r.angle:+.1f}°' if r.angle else ''),
@@ -3584,7 +3588,7 @@ class MainWindow(QMainWindow):
                  f'<b>Resolución usada:</b> {r.res:.2f} (celda {r.cell:.3f} mm en la pieza)']
         if r.err_max:
             extra.append(f'<b>Simplificada:</b> error medio {r.err_mean:.3f} mm, p99 {r.err_p99:.3f} mm '
-                         f'(tolerancia {relief.tolerance(prm):.3f})')
+                         f'(tolerancia {relief.tolerance(prm, r.res):.3f})')
         dst = desviacion.stats(r)
         if dst:
             extra.insert(0, f'<b>Fidelidad al escaneo:</b> media {dst["mean"]:.3f} mm · 95 % de la superficie a menos de '

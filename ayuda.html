@@ -793,6 +793,11 @@ fresarla, imprimirla en gran formato por piezas o medir sobre ella. Cambia esto:
 <p>La pestaña Tamaño enseña entonces la medida real (en m o cm), el detalle, <b>hasta dónde llega Poisson</b> en los
 tipos 3D (en piezas muy grandes no baja de unos 20 mm con la profundidad automática: pedir menos resolución no da más
 detalle) y la simplificación. Al guardar, propone el formato del uso y añade «_1a1» al nombre.</p>
+<p><b>Para el máximo detalle</b> de una pieza grande: <a href="#p-res">Resolución</a> de unos 20 mm (Poisson sube
+entonces a profundidad 11, su máximo automático) y, si la nube viene de una malla (OBJ, STL, PLY con caras),
+<a href="#p-denoise">Alisado (3D)</a> en 0: los puntos sacados de una malla no tienen ruido que alisar. En el acueducto
+de 37 m (malla de 242 000 vértices, aristas de unos 5 cm) eso deja la copia a unos 3 mm de la malla original
+(mediana), frente a unos 7 mm con los valores automáticos; tarda unos 4 minutos y usa unos 7 GB.</p>
 <h3 id="p-use">Uso (tamaño real)</h3>
 <p class="def">Solo con «Copia a tamaño real» · por defecto archivo</p>
 <ul>

@@ -214,6 +214,11 @@ def is_real(prm):
 REAL_TOL = {'archivo': 0.25, 'cnc': 0.25, 'gran formato': 0.25, 'medir': 0.05}
 
 
+def by_length(prm):
+    """¿La escala la fija el lado mayor final (target_len)? No con escala 1:N fijada ni a tamaño real."""
+    return prm.target_len > 0 and getattr(prm, 'ratio', 0) <= 0 and not is_real(prm)
+
+
 def piece_scale(prm, L):
     """Factor nube (mm) -> pieza (mm): 1/ratio si se fija la escala 1:ratio; si no, lado mayor final / L;
     tamaño real si target_len = 0 o si el destino es «Tamaño real»."""
@@ -1024,7 +1029,7 @@ class OrientPreview:
         F = 0
         if prm.frame > 0:
             F = max(1, int(round(prm.frame / (res * s))))
-            if prm.target_len > 0 and prm.ratio <= 0:
+            if by_length(prm):
                 for _ in range(3):
                     s = prm.target_len / ((max(nu, nv) + 2 * F) * res)
                     F = max(1, int(round(prm.frame / (res * s))))
@@ -1137,8 +1142,9 @@ def heightmap(p, prm: Params, rgb=None, log=lambda s: None):
     else:
         lim = {'impresora': 'la impresora', 'escaneo': 'el escaneo'}.get(plan['why'], plan['why'])
         log(f'Resolución automática: {res:g} — limita {lim} '
-            f'(escaneo {plan["res_scan"]:.2f}, boquilla {prm.nozzle:g} mm → {plan["res_print"]:.2f}); '
-            f'celda de {plan["cell_print"]:.3f} mm en la pieza')
+            + ('(copia a tamaño real); ' if is_real(prm) else
+               f'(escaneo {plan["res_scan"]:.2f}, boquilla {prm.nozzle:g} mm → {plan["res_print"]:.2f}); ')
+            + f'celda de {plan["cell_print"]:.3f} mm en la pieza')
     if plan['fits'] is False:
         log(f'AVISO: la pieza ({plan["size"][0]:.0f} × {plan["size"][1]:.0f} mm) no cabe en la cama '
             f'({prm.bed_x:.0f} × {prm.bed_y:.0f} mm)')
@@ -1316,6 +1322,9 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None):
             r.dev = desviacion.transfer(r0, r)
     depth = r.relief_depth
     nl = depth / prm.layer if prm.layer > 0 else 0
+    if is_real(prm):                            # copia a tamaño real: ni capas ni impresora
+        log(f'Copia a tamaño real: {depth / 1000:.2f} m de ' + ('alto' if r.mode == 'objeto' else 'relieve'))
+        return r
     if r.mode == 'objeto':
         log(f'Objeto de {depth:.1f} mm de alto ≈ {nl:.0f} capas de {prm.layer:g} mm')
         return r
@@ -1395,7 +1404,7 @@ def _reconstruct_25d(hm, prm, log, back=None):
     if prm.frame > 0:
         F = max(1, int(round(prm.frame / (res * s))))
         # el marco se añade fuera: recalcular la escala para que el lado mayor siga cumpliéndose
-        if prm.target_len > 0 and prm.ratio <= 0:
+        if by_length(prm):
             for _ in range(3):
                 s = prm.target_len / ((max(nu, nv) + 2 * F) * res)
                 F = max(1, int(round(prm.frame / (res * s))))
@@ -1458,6 +1467,7 @@ def back_face(hm, prm, log=lambda s: None):
                                                  'gauss', 'edges', 'floor_pct', 'erode', 'plane', 'units')})
     pb.res = hm.res
     pb.angle, pb.auto_straighten, pb.target_len, pb.ratio = 0.0, False, prm.target_len, prm.ratio
+    pb.target = getattr(prm, 'target', 'imprimir')
     flip = e.get('flip')                           # None: decidir; True/False: elegido a mano
     # visto desde su lado, el reverso sale espejado respecto a como queda bajo la cara; «invertir» ya da la vuelta
     # (y espeja): solo hay que espejar aparte si no se invierte
@@ -1522,8 +1532,22 @@ def back_face(hm, prm, log=lambda s: None):
 MIN_TRIS_PER_STRIP = 150_000
 
 
+DECIMATE_SIZE = 100.0     # lado mayor al que se lleva la malla para simplificarla (ver _decimate_mesh)
+
+
 def _decimate_mesh(V, T, vcol, target, workers, log=lambda s: None):
-    """Simplifica a ~target triángulos. Devuelve (verts, tris, vcol) cerrada, o None si no se pudo."""
+    """Simplifica a ~target triángulos. Devuelve (verts, tris, vcol) cerrada, o None si no se pudo.
+    Se simplifica con la malla llevada a DECIMATE_SIZE de lado y centrada: con coordenadas de decenas de metros en
+    mm (una copia a tamaño real de un acueducto), PyMeshLab dejaba aristas abiertas que a escala reducida no deja."""
+    c = V.mean(0)
+    k = DECIMATE_SIZE / max(float(np.ptp(V, 0).max()), 1e-9)
+    out = _decimate_mesh_n((V - c) * k, T, vcol, target, workers, log)
+    if out is None:
+        return None
+    return (out[0] / k + c, out[1], out[2])
+
+
+def _decimate_mesh_n(V, T, vcol, target, workers, log=lambda s: None):
     import pymeshlab
     out = None
     workers = min(workers, len(T) // MIN_TRIS_PER_STRIP)   # franjas demasiado finas no compensan

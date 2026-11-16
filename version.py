@@ -19,6 +19,9 @@ HISTORY = [
         'menos de 5 cm, algo tomado por metros), al abrir la nube se pregunta, diciendo cuánto mediría en cada unidad',
         '«Profundidad máx.» automática (nuevo valor por defecto): 250 mm, o la cuarta parte del lado mayor de la cara '
         'en piezas grandes. Con 250 fijos una fachada de 37 m perdía la mitad de la nube',
+        'Piezas de decenas de metros: la simplificación ya no deja la malla abierta (se hace con la malla reducida a '
+        'una escala normal y luego se devuelve a su tamaño), y la fidelidad al escaneo solo mide donde hay escaneo '
+        'cerca (antes, en piezas grandes, comparaba con la otra cara de un pilar o con el terreno desde la base)',
     ]),
     ('0.21.1', 'noviembre 2026', [
         'Piezas enormes a escala real (un acueducto de 37 m): «Abierto por abajo» ya no llena la memoria. Sus paredes '
