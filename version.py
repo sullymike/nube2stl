@@ -22,6 +22,11 @@ HISTORY = [
         'la alineación reutiliza lo ya calculado y es unas tres veces más rápida',
         'Los parámetros que no cuentan para el tipo de pieza se quitan sin dejar huecos, y la barra de desplazamiento '
         'solo sale si hace falta',
+        'Ventana más despejada: los parámetros ocupan todo el alto (el fichero pasa a la derecha, cargar/guardar '
+        'ajustes van en el botón «Ajustes» y la propuesta del tipo de pieza en una sola línea); cabe todo sin barra '
+        'de desplazamiento en una pantalla de 1080 líneas salvo Avanzado',
+        'Menú Ver: Parámetros, Fichero, Resultado y Registro son paneles que se ponen a la izquierda o a la '
+        'derecha, en pestañas, sueltos en otra pantalla o se cierran; la disposición se recuerda',
         'Publicado en GitHub: Ayuda › «Buscar actualizaciones…» enseña las novedades de la última versión y la instala '
         '(git pull, o copiando los ficheros nuevos y guardando los de antes); al abrir avisa en la barra de estado si '
         'hay una nueva (como mucho una vez al día). En la consola: --actualizar',

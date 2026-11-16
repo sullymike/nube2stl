@@ -63,7 +63,7 @@ from PyQt5.QtSvg import QSvgRenderer  # noqa: E402
 from PyQt5.QtWidgets import (QAction, QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox,  # noqa: E402
                              QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
                              QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy,
-                             QSpinBox, QSplashScreen, QSplitter, QStackedWidget, QStyle, QTabWidget, QTextBrowser,
+                             QSpinBox, QSplashScreen, QStackedWidget, QStyle, QTabWidget, QTextBrowser,
                              QLineEdit, QScrollArea, QToolButton, QButtonGroup, QDialogButtonBox,
                              QVBoxLayout, QWidget)
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT  # noqa: E402
@@ -113,7 +113,7 @@ QPushButton#primary:disabled {{ background: #e9c3aa; color: #fff6ef; }}
 QPushButton {{ background: white; border: 1px solid #c9d1d8; border-radius: 6px; padding: 5px 10px; }}
 QPushButton:hover {{ border-color: {C['teal']}; background: #f1f8fa; }}
 QPushButton:disabled {{ color: #9aa5ae; background: #f1f3f5; border-color: #dde2e6; }}
-QPushButton#kind {{ padding: 6px 4px; }}
+QPushButton#kind {{ padding: 3px 4px; }}
 QPushButton#kind:checked {{ background: {C['teal']}; color: white; border-color: {C['teal']}; font-weight: 700; }}
 #steps {{ background: white; border: 1px solid {C['line']}; border-radius: 8px; }}
 QToolButton#step {{ border: none; border-radius: 6px; padding: 4px 9px; color: {C['muted']}; background: transparent; }}
@@ -124,6 +124,11 @@ QToolButton#step:disabled {{ color: #b8c1c8; }}
 QLabel#stepArrow {{ color: #b8c1c8; padding: 0 1px; }}
 QPushButton#link {{ border: none; background: transparent; color: {C['teal']}; text-decoration: underline; padding: 2px; }}
 
+QToolBar#cabecera {{ background: {C['navy']}; border: none; padding: 0; spacing: 0; }}
+QDockWidget {{ color: {C['teal']}; font-weight: 700; font-size: 8.5pt; }}
+QDockWidget::title {{ background: {C['bg']}; padding: 8px 12px 4px 12px; text-align: left; }}
+QMainWindow::separator {{ background: {C['bg']}; width: 6px; height: 6px; }}
+QMainWindow::separator:hover {{ background: {C['line']}; }}
 QFrame#card {{ background: {C['card']}; border: 1px solid {C['line']}; border-radius: 10px; }}
 QLabel#cardTitle {{ color: {C['teal']}; font-weight: 800; font-size: 8.5pt; letter-spacing: 1px; }}
 QFrame#tile {{ background: #f4f6f8; border: none; border-radius: 8px; }}
@@ -1229,32 +1234,137 @@ class MainWindow(QMainWindow):
 
         self.job = None
         self.setStyleSheet(STYLE)
+        # cabecera de lado a lado (por encima de los paneles), en una barra fija
+        from PyQt5.QtWidgets import QToolBar
+        hb = QToolBar('Cabecera')
+        hb.setObjectName('cabecera')
+        hb.setMovable(False)
+        hb.setFloatable(False)
+        hb.setContextMenuPolicy(Qt.PreventContextMenu)
+        hb.toggleViewAction().setVisible(False)
+        hb.addWidget(self._header())
+        self.addToolBar(Qt.TopToolBarArea, hb)
         central = QWidget()
         central.setObjectName('central')
-        root = QVBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        root.addWidget(self._header())
-
-        body = QSplitter()
-        body.setHandleWidth(8)
-        body.setContentsMargins(10, 10, 10, 0)
-        body.addWidget(self._left_panel())
-        body.addWidget(self._center_panel())
-        body.addWidget(self._right_panel())
-        body.setStretchFactor(0, 0)
-        body.setStretchFactor(1, 1)
-        body.setStretchFactor(2, 0)
-        body.setSizes([380, 680, 320])
-        wrap = QWidget()
-        wl = QVBoxLayout(wrap)
-        wl.setContentsMargins(10, 10, 10, 6)
-        wl.addWidget(body)
-        root.addWidget(wrap, 1)
+        wl = QVBoxLayout(central)
+        wl.setContentsMargins(4, 10, 4, 6)
+        wl.addWidget(self._center_panel())
         self.setCentralWidget(central)
+        self._docks()
         self._statusbar()
         self.update_buttons()
         QTimer.singleShot(4000, self.auto_update_check)
+
+    # ---------- paneles acoplables (menú Ver)
+    VIEW_VERSION = 1                      # súbelo si cambian los paneles: la disposición guardada deja de valer
+
+    def _docks(self):
+        """Parámetros a la izquierda; Fichero, Resultado y Registro a la derecha. Cada uno se puede arrastrar por
+        su título a cualquier lado (o encima de otro, en pestañas), sacar como ventana o cerrar; Ver › los vuelve
+        a poner. La disposición se guarda al salir."""
+        from PyQt5.QtWidgets import QDockWidget
+        self.setDockNestingEnabled(True)
+        self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
+        fcard, rcard, gcard = self._right_cards()
+        self.docks = {}
+        for key, title, w, area in [('parametros', 'Parámetros', self._left_panel(), Qt.LeftDockWidgetArea),
+                                    ('fichero', 'Fichero', fcard, Qt.RightDockWidgetArea),
+                                    ('resultado', 'Resultado', rcard, Qt.RightDockWidgetArea),
+                                    ('registro', 'Registro', gcard, Qt.RightDockWidgetArea)]:
+            d = QDockWidget(title, self)
+            d.setObjectName(f'panel_{key}')
+            d.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
+            hold = QWidget()                      # un poco de aire alrededor de la tarjeta
+            hl = QVBoxLayout(hold)
+            hl.setContentsMargins(6, 0, 6, 8)
+            if key in ('fichero', 'resultado'):   # si no cabe entero, que se pueda desplazar (no se pierde nada)
+                sc = QScrollArea()
+                sc.setWidget(w)
+                sc.setWidgetResizable(True)
+                sc.setFrameShape(QFrame.NoFrame)
+                sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+                hl.addWidget(sc)
+            else:
+                hl.addWidget(w)
+            d.content = w
+            d.setWidget(hold)
+            self.addDockWidget(area, d)
+            self.docks[key] = d
+        self.resizeDocks([self.docks['parametros'], self.docks['registro']], [410, 330], Qt.Horizontal)
+        self.resizeDocks([self.docks['fichero'], self.docks['resultado'], self.docks['registro']], [130, 110, 600],
+                         Qt.Vertical)
+        self._view_default = self.saveState(self.VIEW_VERSION)
+        self._view_menu()
+        import registro
+        st = registro.load_config().get('vista')
+        if st:
+            from PyQt5.QtCore import QByteArray
+            self.restoreState(QByteArray.fromBase64(st.encode()), self.VIEW_VERSION)
+
+    def _view_menu(self):
+        m = self.view_menu
+        m.clear()
+        for d in self.docks.values():
+            a = d.toggleViewAction()
+            a.setText(f'Panel {d.windowTitle()}')
+            m.addAction(a)
+        m.addSeparator()
+        a = QAction('Todos los paneles a la derecha', self)
+        a.triggered.connect(lambda: self.view_side(Qt.RightDockWidgetArea))
+        m.addAction(a)
+        a = QAction('Todos los paneles a la izquierda', self)
+        a.triggered.connect(lambda: self.view_side(Qt.LeftDockWidgetArea))
+        m.addAction(a)
+        a = QAction('Restablecer la vista', self)
+        a.triggered.connect(self.view_reset)
+        m.addAction(a)
+        m.addSeparator()
+        a = QAction('Arrastra un panel por su título para cambiarlo de lado, o suéltalo encima de otro para ponerlos '
+                    'en pestañas', self)
+        a.setEnabled(False)
+        m.addAction(a)
+
+    def fit_dock(self, key, again=True):
+        """Que un panel pequeño (Fichero, Resultado) enseñe todo lo que tiene al cambiar su contenido: su alto
+        mínimo pasa a ser el de su contenido (como mucho el 45 % de la ventana) y crece a costa de los de su columna."""
+        d = getattr(self, 'docks', {}).get(key)
+        if d is None:
+            return
+        w, card = d.widget(), d.content
+        lay = card.layout()
+        lay.invalidate()
+        lay.activate()
+        need = max(lay.totalHeightForWidth(card.width()) if lay.hasHeightForWidth() else 0,
+                   lay.totalSizeHint().height()) + 10            # + el margen de abajo
+        w.setMinimumHeight(min(need, int(self.height() * 0.45)))
+        if not d.isFloating() and d.isVisible() and w.height() < need:
+            self.resizeDocks([d], [need + d.height() - w.height()], Qt.Vertical)
+        if again:                                 # al cambiar el alto, el texto se reparte en otras líneas
+            QTimer.singleShot(80, lambda: self.fit_dock(key, again=False))
+
+    def view_side(self, area):
+        """Todos los paneles a un lado, uno debajo de otro (Parámetros arriba, el más alto)."""
+        ds = list(self.docks.values())
+        for d in ds:
+            d.setFloating(False)
+            d.show()
+            self.addDockWidget(area, d, Qt.Vertical)
+        self.resizeDocks(ds, [560, 90, 110, 240], Qt.Vertical)
+        self.resizeDocks([ds[0]], [410], Qt.Horizontal)
+
+    def view_reset(self):
+        for d in self.docks.values():
+            d.setFloating(False)
+            d.show()
+        self.restoreState(self._view_default, self.VIEW_VERSION)
+
+    def save_view(self):
+        import registro
+        try:
+            registro.save_config(vista=bytes(self.saveState(self.VIEW_VERSION).toBase64()).decode())
+        except OSError:
+            pass
 
     # ---------- piezas de la ventana
     @staticmethod
@@ -1326,7 +1436,22 @@ class MainWindow(QMainWindow):
         return h
 
     def _left_panel(self):
-        card, lay = self._card('Parámetros')
+        card, lay = self._card()                  # el título lo pone el panel acoplable (ver _docks)
+        b = self.btn_settings = QToolButton()     # cargar/guardar/restablecer ajustes: junto a «¿Qué has escaneado?»
+        b.setText('Ajustes ')
+        b.setCursor(Qt.PointingHandCursor)
+        b.setPopupMode(QToolButton.InstantPopup)
+        b.setToolTip('Cargar o guardar los ajustes en un fichero .json, o volver a los de por defecto '
+                     '(también en el menú Archivo)')
+        from PyQt5.QtWidgets import QMenu
+        m = QMenu(b)
+        for text, fn in [('Cargar ajustes…', self.load_params), ('Guardar ajustes…', self.save_params),
+                         (None, None), ('Restablecer valores por defecto', self.reset_params)]:
+            if text is None:
+                m.addSeparator()
+            else:
+                m.addAction(text, fn)
+        b.setMenu(m)
         lay.addWidget(self._kind_selector())
         self.ptabs = QTabWidget()
         self.ptabs.setUsesScrollButtons(False)
@@ -1344,8 +1469,8 @@ class MainWindow(QMainWindow):
         for short, desc, tab_groups in PARAM_TABS:
             page = QWidget()
             form = RowForm(page)
-            form.setContentsMargins(8, 10, 4, 10)
-            form.setVerticalSpacing(9)
+            form.setContentsMargins(8, 6, 4, 6)
+            form.setVerticalSpacing(7)
             if short == 'Avanzado':
                 n = QLabel(ADVANCED_NOTE)
                 n.setObjectName('muted')
@@ -1494,34 +1619,8 @@ class MainWindow(QMainWindow):
         self.adv_lbl.linkActivated.connect(self._adv_link)
         self.adv_lbl.hide()
         lay.addWidget(self.adv_lbl)
-        hint = QLabel('Pasa el ratón sobre un campo para ver qué hace, o pulsa <b>?</b> para la ayuda completa.')
-        hint.setObjectName('muted')
-        hint.setWordWrap(True)
-        lay.addWidget(hint)
-        row = QHBoxLayout()
-        for text, fn, tip in [('Cargar…', self.load_params, 'Cargar ajustes de un fichero .json'),
-                              ('Guardar…', self.save_params, 'Guardar los ajustes actuales en .json'),
-                              ('Por defecto', self.reset_params, 'Restablecer los valores por defecto')]:
-            b = QPushButton(text)
-            b.setToolTip(tip)
-            b.clicked.connect(fn)
-            row.addWidget(b)
-        lay.addLayout(row)
-        panel = QWidget()
-        v = QVBoxLayout(panel)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(10)
-        v.addWidget(card)
-        fcard, flay = self._card('Fichero')
-        self.lbl_file = QLabel('Ningún fichero cargado')
-        self.lbl_file.setObjectName('muted')
-        self.lbl_file.setWordWrap(True)
-        flay.addWidget(self.lbl_file)
-        v.addWidget(fcard)
-        v.addStretch(1)
-        panel.setMinimumWidth(392)
-        panel.setMaximumWidth(460)
-        return panel
+        card.setMinimumWidth(380)
+        return card
 
     def _center_panel(self):
         self.center = QStackedWidget()
@@ -1675,12 +1774,15 @@ class MainWindow(QMainWindow):
             self.save_mesh()
         self.update_steps()
 
-    def _right_panel(self):
-        panel = QWidget()
-        v = QVBoxLayout(panel)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(10)
-        card, lay = self._card('Resultado')
+    def _right_cards(self):
+        """Fichero, Resultado y Registro: cada uno va en su panel acoplable (ver _docks)."""
+        fcard, flay = self._card()
+        self.lbl_file = QLabel('Ningún fichero cargado')
+        self.lbl_file.setObjectName('muted')
+        self.lbl_file.setWordWrap(True)
+        flay.addWidget(self.lbl_file)
+        flay.addStretch(1)
+        card, lay = self._card()
         self.res_empty = QLabel('Aún no se ha generado ninguna pieza.')
         self.res_empty.setObjectName('muted')
         self.res_empty.setWordWrap(True)
@@ -1714,13 +1816,16 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.res_extra, 3, 0, 1, 2)
         self.res_box.hide()
         lay.addWidget(self.res_box)
-        v.addWidget(card)
+        lay.addStretch(1)
+        rcard = card
 
         card, lay = self._card()
+        self.log = QPlainTextEdit()
+        self.log.setObjectName('log')
+        self.log.setReadOnly(True)
+        self.log.setMaximumBlockCount(2000)
+        lay.addWidget(self.log, 1)
         head = QHBoxLayout()
-        t = QLabel('REGISTRO')
-        t.setObjectName('cardTitle')
-        head.addWidget(t)
         head.addStretch(1)
         b = QToolButton()
         b.setText('Limpiar')
@@ -1729,15 +1834,9 @@ class MainWindow(QMainWindow):
         b.clicked.connect(lambda: self.log.clear())
         head.addWidget(b)
         lay.addLayout(head)
-        self.log = QPlainTextEdit()
-        self.log.setObjectName('log')
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(2000)
-        lay.addWidget(self.log)
-        v.addWidget(card, 1)
-        panel.setMinimumWidth(290)
-        panel.setMaximumWidth(400)
-        return panel
+        for c in (fcard, rcard, card):
+            c.setMinimumWidth(260)
+        return fcard, rcard, card
 
     def _statusbar(self):
         sb = self.statusBar()
@@ -1794,6 +1893,7 @@ class MainWindow(QMainWindow):
                 a.setShortcut(sc)
             m.addAction(a)
             self.act[key] = a
+        self.view_menu = mb.addMenu('&Ver')    # se rellena al crear los paneles (_docks)
         h = mb.addMenu('A&yuda')
         for text, anchor, sc in [('Pasos a seguir: de la nube al STL', 'pasos', 'F1'),
                                  ('Parámetros', 'parametros', None), ('Formatos y archivos', 'salida', None),
@@ -2018,7 +2118,11 @@ class MainWindow(QMainWindow):
         v.setContentsMargins(0, 0, 0, 4)
         v.setSpacing(4)
         t = QLabel('<b>¿Qué has escaneado?</b>')
-        v.addWidget(t)
+        head = QHBoxLayout()
+        head.addWidget(t)
+        head.addStretch(1)
+        head.addWidget(self.btn_settings)
+        v.addLayout(head)
         grid = QGridLayout()
         grid.setSpacing(4)
         self.kind_btns = {}
@@ -2123,7 +2227,8 @@ class MainWindow(QMainWindow):
         key = recetas.kind_of_params(self._kind_params())
         self.kind_btns[key].setChecked(True)
         it = next(k for k in recetas.KINDS if k['key'] == key)
-        self.kind_desc.setText(it['line'] + (f' <i>{it["hint"]}</i>' if it.get('hint') else ''))
+        self._kind_line = it['line'] + (f' <i>{it["hint"]}</i>' if it.get('hint') else '')
+        self.kind_desc.setText(self._kind_line)
         self.kind_desc.setToolTip(it['desc'])
         self.chk_under.setVisible(key in ('relieve', 'curvo'))
         if hasattr(self, 'curve_row'):
@@ -2145,16 +2250,23 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'kind_guess') or not g:
             if hasattr(self, 'kind_guess'):
                 self.kind_guess.hide()
+                self.kind_desc.show()
             return
         key, why = g
         it = next(k for k in recetas.KINDS if k['key'] == key)
         now = recetas.kind_of_params(self._kind_params())
+        # un solo texto bajo los botones (el sitio es para los parámetros): si coincide, la descripción con una
+        # marca y el motivo en la burbuja; si no, solo la propuesta, que es lo que hay que leer
         if now == key:
-            txt = f'✔ <b>{it["short"]}</b>, por la forma de la nube: {why}. Si no es así, elige otro botón.'
-        else:
-            txt = (f'La nube parece <b>{it["short"].lower()}</b>: {why}. '
-                   f'<a href="{key}" style="color:{C["teal"]}"><b>Usar «{it["short"]}»</b></a>')
-        self.kind_guess.setText(txt)
+            self.kind_guess.hide()
+            self.kind_desc.setText(f'<span style="color:{C["ok"]}"><b>✔</b></span> {getattr(self, "_kind_line", "")}')
+            self.kind_desc.setToolTip(f'<b>{it["short"]}</b>, por la forma de la nube: {why}.<br>'
+                                      f'Si no es así, elige otro botón.<br><br>{it["desc"]}')
+            self.kind_desc.show()
+            return
+        self.kind_guess.setText(f'La nube parece <b>{it["short"].lower()}</b>: {why}. '
+                                f'<a href="{key}" style="color:{C["teal"]}"><b>Usar «{it["short"]}»</b></a>')
+        self.kind_desc.hide()
         self.kind_guess.show()
 
     def _apply_guess(self, tries=20):
@@ -2303,6 +2415,8 @@ class MainWindow(QMainWindow):
         self.st_time.setText(f'{self.clock.elapsed() / 1000:.1f} s')
 
     def closeEvent(self, ev):
+        if hasattr(self, 'docks'):
+            self.save_view()
         if self.job is not None:          # no dejar un proceso de reconstrucción huérfano
             self.job.cancel()
         if self.worker is not None:
@@ -2590,8 +2704,8 @@ class MainWindow(QMainWindow):
             self.plane_lbl.setText(f'Plano por 3 puntos marcados · <a href="pick" {a}>marcar otros</a> · '
                                    f'<a href="clear" {a}>quitar</a>')
         else:
-            self.plane_lbl.setText(f'<a href="pick" {a}>Marcar 3 puntos de la cara…</a> (para una cara con laterales, '
-                                   f'roturas o peana que tuercen el plano)')
+            self.plane_lbl.setText(f'<a href="pick" {a}>Marcar 3 puntos de la cara…</a> (si laterales, roturas o '
+                                   f'peana tuercen el plano)')
         ang = (getattr(self, 'load_info', None) or {}).get('guess_corner')
         if ang and self._plane_pick is None and not self.plane_pts and self.widgets['plane'].currentText() == 'nube':
             self.plane_lbl.setText(self.plane_lbl.text() + (
@@ -2771,6 +2885,7 @@ class MainWindow(QMainWindow):
         self.orient_undo = []
         self.result = None
         ext = self.xyz.max(0) - self.xyz.min(0)
+        QTimer.singleShot(60, lambda: self.fit_dock('fichero'))
         self.lbl_file.setText(
             f'<span style="font-size:11pt; font-weight:700; color:{C["navy"]}">{os.path.basename(self.path)}</span><br>'
             f'{len(self.xyz):,} puntos · {"con color" if self.rgb is not None else "sin color"}<br>'
@@ -2819,30 +2934,31 @@ class MainWindow(QMainWindow):
             self.orient_btns.append(b)
             return b
         self.orient_btns = []
-        t = QLabel('<b>Cuadrar el giro</b>')
+        tip = ('Arrastra en la vista sobre algo que deba quedar recto (un borde, un renglón): se pondrá '
+               'horizontal o vertical. En modo objeto, elige «Arriba» y gira en planta.')
+        t = QLabel('<b>Cuadrar el giro</b> · o arrastra en la vista')
+        t.setObjectName('muted')
+        t.setWordWrap(True)
+        t.setToolTip(tip)
         t.setStyleSheet('margin-top: 6px;')
         form.addRow(t)
-        lab = QLabel('Arrastra en la vista sobre algo que deba quedar recto (un borde, un renglón): '
-                     'se pondrá horizontal o vertical. En modo objeto, elige «Arriba» y gira en planta.')
-        lab.setObjectName('muted')
-        lab.setWordWrap(True)
-        lab.setMinimumHeight(4 * lab.fontMetrics().lineSpacing())
-        form.addRow(lab)
-        self.btn_orient_lines = btn('Alinear con líneas talladas',
-                                    'Busca la dirección dominante de las aristas rectas del relieve y la pone a '
-                                    'escuadra', self.orient_lines)
-        form.addRow(self.btn_orient_lines)
-        self.btn_orient_contour = btn('Enderezar por contorno', 'Alinea el contorno exterior de la pieza con los ejes',
-                                      self.orient_contour)
-        form.addRow(self.btn_orient_contour)
+        self.btn_orient_lines = btn('Líneas talladas',
+                                    'Alinear con líneas talladas: busca la dirección dominante de las aristas rectas '
+                                    'del relieve y la pone a escuadra', self.orient_lines)
+        self.btn_orient_contour = btn('Por contorno', 'Enderezar por contorno: alinea el contorno exterior de la '
+                                      'pieza con los ejes', self.orient_contour)
+        self.btn_orient_undo = btn('Deshacer', 'Deshacer giro: vuelve al giro anterior', self.orient_undo_last)
+        row = QHBoxLayout()                       # los tres en una fila: Orientar ya es la pestaña más larga
+        row.setSpacing(4)
+        for b in (self.btn_orient_lines, self.btn_orient_contour, self.btn_orient_undo):
+            row.addWidget(b)
+        form.addRow(row)
         row = QHBoxLayout()
         row.setSpacing(4)
         for d in (-90, -1, -0.1, 0.1, 1, 90):
             row.addWidget(btn(f'{d:+g}°'.replace('.', ','), f'Girar {d:+g}° (positivo = antihorario)',
                               lambda _=False, d=d: self.orient_rotate(d)))
         form.addRow(row)
-        self.btn_orient_undo = btn('Deshacer giro', 'Vuelve al giro anterior', self.orient_undo_last)
-        form.addRow(self.btn_orient_undo)
         self.orient_undo = []
         self._orient_dirty = False
         self.orient_timer = QTimer(self)
@@ -3246,6 +3362,7 @@ class MainWindow(QMainWindow):
         self.res_extra.setText('<br>'.join(extra))
         self.res_empty.hide()
         self.res_box.show()
+        QTimer.singleShot(60, lambda: self.fit_dock('resultado'))
         self.show_relief()
         self.show_mesh()
         self.tabs.setCurrentWidget(self.relief_view)

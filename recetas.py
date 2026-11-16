@@ -29,7 +29,7 @@ KINDS = [
               'general de la roca y queda solo el grabado, sobre una placa, que se puede exagerar.',
          line='Se quita la forma de la roca y queda solo el grabado.',
          params=dict(mode='alturas', ground=False, surface='plano', detrend=200.0, interior='no'), auto=['detrend'],
-         hint='En Pieza: «Quitar forma de la roca» y la exageración.'),
+         hint='En Pieza: forma de la roca y exageración.'),
     dict(key='bloque', title='Una cara y los laterales del bloque', short='Bloque',
          desc='El escaneo de la cara trae también parte de los laterales (las caras vecinas). Se conservan y el '
               'bloque se cierra por detrás.',

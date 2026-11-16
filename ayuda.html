@@ -102,6 +102,12 @@ usan las pruebas automáticas.</p>
 </ol>
 
 <h3>En el programa</h3>
+<p class="nota" id="paneles"><b>Paneles (menú Ver).</b> Alrededor de la vista están los paneles <i>Parámetros</i> (a la
+izquierda), <i>Fichero</i>, <i>Resultado</i> y <i>Registro</i> (a la derecha). Cada uno se arrastra por su título al otro
+lado, debajo de otro o encima de otro (quedan en pestañas); con los botones de su título se saca como ventana suelta (útil
+con dos pantallas) o se cierra. <b>Ver</b> los vuelve a mostrar, los pone todos a un lado y tiene <i>Restablecer la
+vista</i>. La disposición se recuerda al cerrar el programa. Los paneles pequeños crecen solos para enseñar lo que tienen,
+y si no cabe, se desplaza dentro de ellos.</p>
 <p class="nota" id="asistente"><b>Asistente (opcional).</b> Si prefieres no tocar parámetros, pulsa <i>Asistente</i> en la
 barra superior (o <i>Archivo → Asistente…</i>, Ctrl+W). Pregunta qué has escaneado (una cara en relieve, un bloque con
 sus laterales, un objeto por todos los lados o un terreno o edificio), qué quieres hacer con ello (solo si hay donde
@@ -311,16 +317,16 @@ Poisson (objeto, fragmento…) el detalle es solo una vista de frente más fina,
   <li>Rueda: zoom hacia el cursor · botón derecho: desplazar · doble clic: volver a encuadrar.</li>
 </ul>
 <p><b>Cuadrar el giro tomando algo como referencia.</b> Las herramientas fijan un giro exacto (desactivan
-<i>Enderezar automáticamente</i>) y todas se pueden deshacer con <i>Deshacer giro</i>:</p>
+<i>Enderezar automáticamente</i>) y todas se pueden deshacer con <i>Deshacer</i> (en la pestaña Orientar, bajo «Cuadrar el giro»):</p>
 <table>
 <tr><th>Herramienta</th><th>Qué hace</th><th>Cuándo usarla</th></tr>
 <tr><td><b>Línea de referencia</b></td><td>Arrastra con el botón izquierdo sobre la vista, a lo largo de algo que deba
 quedar recto. Al soltar, la pieza gira lo justo para que esa línea quede horizontal o vertical (la más cercana).</td>
 <td>Un renglón de una inscripción, el borde de una cartela, la moldura tallada o el canto de la piedra. Es la más precisa
 para encajar el relieve en un marco: cuanto más larga la línea, mejor.</td></tr>
-<tr><td><b>Alinear con líneas talladas</b></td><td>Busca la dirección dominante de las aristas rectas <i>dentro</i> del
+<tr><td><b>Líneas talladas</b></td><td>Busca la dirección dominante de las aristas rectas <i>dentro</i> del
 relieve (no el contorno) y la pone a escuadra.</td><td>Relieves con molduras, recuadros o letras; piedras de contorno roto.</td></tr>
-<tr><td><b>Enderezar por contorno</b></td><td>El mismo cálculo que <i>Enderezar automáticamente</i> (rectángulo mínimo
+<tr><td><b>Por contorno</b></td><td>El mismo cálculo que <i>Enderezar automáticamente</i> (rectángulo mínimo
 del contorno), pero fijado como giro.</td><td>Piezas cuyo contorno exterior es recto.</td></tr>
 <tr><td><b>±90°, ±1°, ±0,1°</b></td><td>Gira esa cantidad (positivo = antihorario).</td><td>Poner la pieza de pie o
 cabeza abajo, y el ajuste fino a ojo con las guías.</td></tr>
@@ -1218,7 +1224,7 @@ memoria por 1,6 o más (las profundidades 11 a 13 están extrapoladas).</p>
   <tr><td>PLY con color</td><td>Ver o compartir el modelo con el color original (MeshLab, CloudCompare, Blender), o para impresoras a color.
       Es el más compacto.</td></tr>
 </table>
-<p><b>Ajustes (.json):</b> <i>Guardar ajustes</i> y <i>Cargar ajustes</i> guardan y recuperan todos los parámetros, para repetir
+<p><b>Ajustes (.json):</b> <i>Guardar ajustes</i> y <i>Cargar ajustes</i> (botón <b>Ajustes</b> arriba del panel Parámetros, o menú Archivo) guardan y recuperan todos los parámetros, para repetir
 la misma configuración con otras caras.</p>
 <p id="ficha"><b>Ficha PDF</b> (<i>Archivo &gt; Ficha PDF de la pieza</i>, o <code>--ficha</code> en la consola): una hoja con
 cuatro vistas de la pieza (frente, lado, planta y perspectiva), sus medidas, escala, volumen, si está cerrada, el error de la
