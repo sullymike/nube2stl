@@ -1,0 +1,24 @@
+# entornos de Python (ligados a cada equipo) y ejecutables construidos
+.venv/
+venv/
+venv-build/
+build/
+dist/
+__pycache__/
+*.pyc
+
+# copias de seguridad de la actualización (actualizar.py) y su carpeta temporal
+.anterior/
+.nueva-*/
+
+# datos y ajustes personales: nubes, mallas y ajustes guardados con rutas de este equipo
+ajustes.json
+Qidi4plus.json
+*.ply
+*.stl
+*.3mf
+*.obj
+*.las
+*.laz
+*.e57
+*.zip

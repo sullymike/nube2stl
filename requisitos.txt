@@ -1,0 +1,12 @@
+# Librerías de nube2stl (Python 3.10–3.12). Instalar con:  pip install -r requisitos.txt
+numpy>=1.24,<2
+scipy>=1.10
+matplotlib>=3.6
+PyQt5>=5.15
+pyqtgraph>=0.13,<0.14       # el visor 3D está probado con la 0.13
+PyOpenGL>=3.1
+pymeshlab>=2023.12
+open3d>=0.18
+psutil>=5.9
+laspy[lazrs]>=2.4           # leer nubes LAS / LAZ (opcional)
+pye57>=0.4                  # leer nubes E57 (opcional)

@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Ayuda de nube2stl</title>
+<style>
+  body { font-family: sans-serif; line-height: 1.45; max-width: 860px; margin: 0 auto; padding: 12px 16px; color: #222; background: #fff; }
+  h1 { font-size: 1.6em; margin-bottom: .2em; }
+  h2 { font-size: 1.3em; margin-top: 1.6em; border-bottom: 1px solid #ccc; padding-bottom: .2em; }
+  h3 { font-size: 1.08em; margin-top: 1.2em; margin-bottom: .2em; color: #234; }
+  code { background: #f1f1f1; padding: 0 3px; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #ccc; padding: 4px 8px; vertical-align: top; text-align: left; }
+  th { background: #f1f1f1; }
+  .def { color: #555; font-size: .92em; }
+  h3.grupo { font-size: 1.2em; color: #2a7f9e; margin-top: 1.8em; border-bottom: 1px dotted #9cc3d0; }
+  h4.grupo { font-size: 1.0em; color: #2a7f9e; margin-top: 1.2em; margin-bottom: 0; }
+  .nota { background: #fff7e0; border-left: 4px solid #e0a800; padding: 6px 10px; }
+  .toc a { margin-right: 14px; }
+  .ej { background: #eef6f9; border-left: 4px solid #2a7f9e; padding: 5px 10px; font-size: .95em; }
+  .fig { color: #555; font-size: .9em; margin-top: 2px; }
+  .ok { color: #2e8b57; } .bad { color: #c0392b; }
+</style>
+</head>
+<body>
+
+<h1>nube2stl — ayuda</h1>
+<p class="def">Versión {{VERSION}} · {{AUTHOR}}, {{YEAR}}</p>
+<p class="toc">
+  <a href="#pasos">Pasos a seguir</a>
+  <a href="#ejemplos">Ejemplos</a>
+  <a href="#recetas">Valores de ejemplo</a>
+  <a href="#parametros">Parámetros</a>
+  <a href="#salida">Formatos y archivos</a>
+  <a href="#perdidas">Qué se pierde</a>
+  <a href="#mejoras">Cómo mejorarlo</a>
+  <a href="#similares">Programas similares</a>
+  <a href="#cli">Línea de comandos</a>
+  <a href="#requisitos">Requisitos</a>
+  <a href="#actualizar">Instalar y actualizar</a>
+</p>
+<p>nube2stl convierte la nube de puntos de un <b>relieve</b> (una cara de una piedra, una placa, una lápida o un friso) en una
+<b>malla cerrada</b> lista para imprimir en 3D. El método es de tipo «2,5D»:</p>
+<ol>
+  <li>ajusta el plano principal de la cara;</li>
+  <li>convierte los puntos en un <b>mapa de alturas</b> (un valor de altura por celda);</li>
+  <li>recorta el contorno de la pieza;</li>
+  <li>la cierra con paredes laterales y una base plana.</li>
+</ol>
+<p>El resultado siempre es estanco (<i>watertight</i>) y se imprime sin soportes.</p>
+<p>Hay un segundo método, el <b>modo 3D</b>, que reconstruye la superficie con <i>Poisson apantallado</i>. A diferencia del mapa
+de alturas, conserva los socavados (los huecos que quedan bajo las partes salientes), y también da una pieza cerrada. Además,
+cualquier método puede terminar con una <b>simplificación adaptativa</b>, que reduce los triángulos de 10 a 30 veces
+sin pérdida visible.</p>
+<p>No solo hace relieves. Según lo que se haya escaneado (<a href="#tipo">¿Qué has escaneado?</a>):</p>
+<ul>
+  <li><b>Relieve:</b> una cara (lápida, inscripción, friso, moneda, sello o la fachada de un edificio), como copia, placa
+      o molde;</li>
+  <li><b>Curvo:</b> un relieve o una inscripción sobre un cilindro (miliario, columna, ara), desenrollado como una placa
+      plana (<a href="#curvo">superficie curva</a>);</li>
+  <li><b>Grabado:</b> grabados sobre una roca irregular (petroglifos, grafitos, icnitas), sin la forma de la roca
+      (<a href="#grabado">grabados sobre roca</a>);</li>
+  <li><b>Bloque:</b> la cara y la parte de los laterales que trae el escaneo (<a href="#bloque">bloque con sus laterales</a>);</li>
+  <li><b>Objeto:</b> una pieza escaneada por todos los lados (<a href="#objeto">estatua, vasija, capitel</a>);</li>
+  <li><b>Fragmento:</b> un fragmento de cerámica a torno, para reconstruir la vasija entera (<a href="#revolucion">ver</a>);</li>
+  <li><b>Interior:</b> una sala, una cueva o una cisterna escaneada desde dentro (<a href="#interior">ver</a>);</li>
+  <li><b>Terreno:</b> un yacimiento, una ruina o un monumento sacado por fotogrametría, como maqueta cerrada
+      (<a href="#p-ground">abierto por abajo</a>) o como fachada en relieve (<a href="#p-view">mirar desde</a>).</li>
+</ul>
+<p class="nota" id="nubes-ejemplo"><b>Nubes de ejemplo.</b> Para aprender o para enseñar sin escaneo propio:
+<i>Ayuda › Abrir un ejemplo</i> (o el enlace de la portada). Hay uno por cada tipo de pieza: una <b>lápida</b> con
+inscripción (Relieve), un <b>bloque</b> con dos laterales (Bloque), media <b>columna</b> con letras (Curvo), un panel de
+<b>roca</b> con grabados (Grabado), una <b>vasija</b> completa con asas (Objeto) y un <b>terreno</b> de 20 × 10 m con un
+muro y un arco (Terreno). Hay además una <b>esquina</b> de friso (dos caras en ángulo) y una <b>lápida gastada</b>
+con letras de menos de 1 mm, para <a href="#p-boost">Realzar lo pequeño</a>. Son sintéticos: imitan lo que sale de un escáner (ruido, posición y giro cualesquiera, solo lo
+que se vería) y se generan en unos segundos la primera vez. Al abrir cada uno, el registro explica qué se puede probar
+con él. Desde la consola, <code>python3 ejemplos.py carpeta</code> los escribe todos en una carpeta. Son los mismos que
+usan las pruebas automáticas.</p>
+
+<!-- ============================================================ -->
+<h2 id="pasos">1. Pasos a seguir: de la nube de puntos al STL</h2>
+
+<h3>Antes de empezar (fuera del programa)</h3>
+<ol>
+  <li><b>Una pieza por fichero.</b> Cada fichero debe contener una sola pieza: una cara en relieve (como
+      <code>lateral1.ply</code>), un bloque, un objeto o un terreno. Si trae más cosas (el suelo, otra cara, el
+      entorno), se pueden quitar en el propio programa con <a href="#recorte">✂ Recortar</a> en la vista de la nube.</li>
+  <li><b>Formato.</b> Se abren directamente nubes <b>PLY</b> (binario o ASCII), <b>XYZ / PTS / TXT / CSV / ASC</b>
+      (columnas <code>x y z</code> y, si las hay, color e intensidad o normales; con o sin cabecera), <b>LAS / LAZ</b>
+      y <b>E57</b> (escáneres láser; varias estaciones se juntan), y mallas <b>OBJ</b>, <b>STL</b> o PLY con caras
+      (fotogrametría). De una malla se toman puntos repartidos por su superficie, con las normales de la malla (el modo
+      objeto las aprovecha) y su color por vértice o de la textura. Las coordenadas georreferenciadas (números muy
+      grandes) se trasladan al origen sin perder precisión. Otros formatos (PCD, RCP…): CloudCompare los guarda como PLY.</li>
+  <li><b>Unidades.</b> Al abrirla, la nube se pasa a milímetros según <a href="#p-units">Unidades de la nube</a>
+      (automático: si mide menos de 20 de lado se toma como metros). A partir de ahí todo está en mm. Las mallas de
+      fotogrametría (OBJ…) suelen venir en metros aunque midan más de 20: si se toma como mm, la ficha del fichero
+      lo avisa en naranja.</li>
+  <li><b>Limpieza.</b> Se lee la nube entera y se buscan los grupos de puntos separados de la pieza (ver
+      <a href="#p-clean">Quitar grupos sueltos</a>): en la vista de la nube se ven <b>en rojo</b>, y en la ficha del
+      fichero se dice cuántos son, para que sepas qué se quita antes de generar. Si el ruido está pegado a la pieza (suelo bajo una estatua,
+      vegetación), conviene recortarlo antes en CloudCompare (<i>Edit &gt; Segment</i>).</li>
+</ol>
+
+<h3>En el programa</h3>
+<p class="nota" id="asistente"><b>Asistente (opcional).</b> Si prefieres no tocar parámetros, pulsa <i>Asistente</i> en la
+barra superior (o <i>Archivo → Asistente…</i>, Ctrl+W). Pregunta qué has escaneado (una cara en relieve, un bloque con
+sus laterales, un objeto por todos los lados o un terreno o edificio), qué quieres hacer con ello (solo si hay donde
+elegir: copia, placa o molde; maqueta o fachada; también una inscripción sobre una columna o grabados sobre una roca), con qué impresora la vas a imprimir, cómo está el escaneo y qué tamaño
+quieres (con atajos para un recuerdo de 60 mm, una pieza normal o una de exposición de 400 mm). En cada paso explica en qué influye cada opción y muestra el cálculo
+de impresión al momento. Según lo que elijas aparecen unas preguntas u otras: el marco solo si haces una placa o un
+molde, la boquilla solo en impresoras de filamento… Al terminar rellena las mismas pestañas de siempre y muestra un
+resumen de qué ha cambiado y por qué. Después puedes retocar cualquier valor a mano. Los pasos siguientes son el camino
+manual.</p>
+<p id="barra-pasos"><b>Barra de pasos.</b> Encima de las vistas hay una barra con los pasos de siempre: <i>Abrir ›
+Revisar la nube › Tipo y tamaño › Orientar › Vista previa › Generar › Guardar</i>. El paso en el que estás sale en
+naranja y los hechos con ✔; cada paso es un botón que te lleva a su sitio o hace la acción. Si cambias algún parámetro
+después de generar, la vista previa, la pieza y el guardado vuelven a quedar pendientes, para que no guardes una pieza
+que ya no corresponde a lo que ves en las pestañas.</p>
+<ol>
+  <li><b>Abrir nube de puntos.</b> Pulsa <i>Abrir nube de puntos (.ply)…</i>. En la pestaña <i>Nube de puntos</i> la ves en 3D
+      (ver <a href="#visor">cómo moverse por el visor</a>). Si la pieza está en varios ficheros (dos tandas del
+      escaneo, la base escaneada aparte), únelos con <i>Archivo › Unir otra nube…</i> (ver
+      <a href="#unir">Unir varias nubes</a>).</li>
+  <li id="tipo"><b>Decir qué has escaneado</b>, con los ocho botones de arriba de los parámetros (<i>¿Qué has
+      escaneado?</i>). Eligen el <a href="#p-mode">método</a> y dejan a la vista solo los parámetros que cuentan con él:
+      <ul>
+        <li><b>Relieve</b>: una cara (lápida, relieve, inscripción, fachada). Método <i>alturas</i>, o <i>3d</i> si marcas
+            <i>Tiene partes que vuelan (socavados)</i>.</li>
+        <li><b>Curvo</b>: un relieve sobre un cilindro, un cono o una pieza a torno (miliario, columna, ara, vasija). Se
+            desenrolla como una placa plana (<a href="#curvo">superficie curva</a>; el desplegable elige cilindro, cono
+            o revolución, <a href="#revolucion">ver</a>). También admite <i>Tiene partes que vuelan</i>.</li>
+        <li><b>Grabado</b>: grabados sobre una roca irregular. Se quita la forma de la roca
+            (<a href="#grabado">grabados sobre roca</a>).</li>
+        <li><b>Bloque</b>: la cara y los laterales escaneados del bloque. Método <i>bloque</i>.</li>
+        <li><b>Objeto</b>: escaneado por todos los lados. Método <i>objeto</i>, cortado por abajo.</li>
+        <li><b>Terreno</b>: terreno, ruina o edificio con solo la superficie de arriba. Método <i>objeto</i> con
+            <a href="#p-ground">Abierto por abajo</a>.</li>
+        <li><b>Fragmento</b>: un fragmento de cerámica a torno; sale la vasija entera
+            (<a href="#revolucion">ver</a>). Método <i>objeto</i> con superficie revolución.</li>
+        <li><b>Interior</b>: una sala, cueva o cisterna escaneada desde dentro; sale en corte o en negativo
+            (<a href="#interior">ver</a>). Método <i>objeto</i>.</li>
+      </ul>
+      <b>Propuesta automática.</b> Al abrir una nube, el programa mira su forma y propone el tipo en un recuadro debajo
+      de los botones, con el motivo («está escaneada por delante y por detrás», «la cara es curva, como un cilindro de
+      Ø 400 mm», «la superficie es irregular y el detalle es poco profundo»…). Si aún no has elegido tú el tipo, lo deja
+      puesto; si ya lo habías elegido (con un botón, el asistente o unos ajustes cargados), lo respeta y te ofrece un
+      enlace para cambiar. Es una propuesta: acierta con los casos claros, pero tú sabes lo que escaneaste.<br>
+      Los parámetros están en cinco pestañas: <i>Tamaño</i> (unidades, limpieza, tamaño y el cálculo de impresión),
+      <i>Pieza</i> (forma, base, marco, molde), <i>Orientar</i>, <i>Acabados</i> (hueca, drenaje, rótulo) y
+      <i>Avanzado</i> (impresora, malla y suavizados: lo normal es no tocarlos).</li>
+  <li><b>Decir cómo se va a imprimir</b> (pestaña <i>Tamaño</i>; la impresora, en <i>Avanzado</i> o con el asistente): el
+      <b>lado mayor final</b> de la pieza (por defecto
+      200 mm), el <b>diámetro de la boquilla</b>, la <b>altura de capa</b> y el tamaño de la <b>cama</b>. Con eso el programa
+      calcula solo la resolución y la simplificación óptimas, y el recuadro <i>Cálculo para la impresión</i> muestra al
+      momento la escala, si la pieza cabe en la cama, el detalle que puede imprimir la boquilla, el detalle que permite el
+      escaneo, la resolución que se va a usar y por qué.</li>
+  <li><b>Resolución (automática).</b> Se usa la mayor de dos:
+      <br><code>impresora: resolución = boquilla ÷ (2 × escala)</code> (detalles menores que media boquilla no se imprimen);
+      <br><code>escaneo: la que deja unos 4 puntos por celda</code> (por debajo solo se rellenaría interpolando).
+      <br>Ejemplo: una piedra de 3500 mm impresa a 200 mm tiene escala 0,057; con boquilla de 0,4 mm la resolución es
+      0,4 / (2 × 0,057) ≈ 3,5 mm de la piedra, que en la pieza son 0,2 mm. Puedes fijar un valor a mano en la pestaña <i>Avanzado</i>.</li>
+  <li><b>Orientar y encuadrar</b> (pestaña <i>Orientar</i>): la vista <i>Orientación</i> muestra al momento cómo quedará la
+      pieza con su forma y su marco. Traza una línea sobre algo que deba quedar recto para cuadrarla
+      (ver <a href="#orientar">orientar y cuadrar la pieza</a>).</li>
+  <li><b>Socavados.</b> En un relieve, empieza sin marcar <i>Tiene partes que vuelan</i> (método alturas), que tarda
+      segundos y sirve para ajustar la orientación y la limpieza.
+      Si el relieve tiene <b>socavados</b> (figuras despegadas del fondo, letras talladas en ángulo, altorrelieve), márcala
+      (método 3d) para la versión final. Es más lento (de 30 s a varios minutos) y necesita más memoria (de 3 a 9 GB).</li>
+  <li><b>Simplificar (automático).</b> El programa quita todos los triángulos que la impresora no notaría: va reduciendo la
+      malla mientras el error se mantenga por debajo de la <a href="#p-quality">tolerancia</a> (con calidad «alta» y capa de
+      0,2 mm, 0,05 mm). Suele quedar entre el 2 % y el 10 % de los triángulos. El panel muestra el error final.</li>
+  <li><b>Generar.</b> Pulsa <i>Generar superficie cerrada</i> y revisa las pestañas <i>Relieve (sombreado)</i> y <i>Malla 3D</i>:
+    <ul>
+      <li>Si el relieve sale <b>hundido</b> en vez de saliente, o se ve un reborde alto alrededor, marca <i>Invertir cara frontal</i>.</li>
+      <li>Si el texto sale <b>al revés</b> (como en un espejo), marca <i>Espejar</i>. Si está <b>cabeza abajo</b>, pon 180° en <i>Giro</i>.</li>
+      <li>Si la pieza está <b>torcida</b>, marca <i>Enderezar automáticamente</i>.</li>
+      <li>Si el <b>borde</b> está lleno de flecos o rampas, sube <i>Recorte del fondo</i> o usa <i>Recortar borde</i>.</li>
+      <li>Si hay <b>pinchos</b> o puntos sueltos, activa <i>Quitar picos</i>.</li>
+      <li>Si el relieve está <b>muy gastado</b> y apenas se aprecia, sube <i>Exageración del relieve</i> (1,5–3).</li>
+    </ul>
+  </li>
+  <li><b>Comprobar el resultado.</b> Durante la generación, el registro avisa del <b>tamaño aproximado del fichero</b> en
+      cada formato: en el modo 3D, antes de empezar Poisson, que es el paso largo; con simplificación, también el tamaño
+      estimado después de simplificar. Así puedes cancelar y ajustar la resolución si va a salir demasiado grande.
+      Al terminar, el panel indica el tamaño de la pieza, el número de triángulos, si la malla está cerrada,
+      la <b>altura del relieve y cuántas capas ocupa</b> (en rojo si son menos de 10: el relieve saldría escalonado
+      y plano; usa capa más fina, pieza mayor o <i>Exageración del relieve</i>), el volumen, la resolución usada,
+      el tamaño de los ficheros y el peso aproximado en PLA macizo. El peso real depende del relleno que pongas en el laminador: con un 15 % suele quedar
+      entre el 25 % y el 35 % del peso macizo.</li>
+  <li><b>Guardar.</b> Usa <i>Guardar…</i> y elige el formato: STL binario para imprimir, o PLY con color para verlo en color.
+      Con <i>Guardar ajustes…</i> puedes reutilizar la misma configuración, y con <i>Procesar varios…</i> convertir varias caras de una vez.</li>
+</ol>
+
+<h3 id="visor">Cómo moverse por el visor 3D</h3>
+<p>Las pestañas <i>Nube de puntos</i> y <i>Malla 3D</i> usan el mismo visor:</p>
+<table>
+<tr><th>Acción</th><th>Ratón o teclado</th></tr>
+<tr><td>Girar</td><td>Arrastrar con el botón izquierdo. Mientras giras, un punto naranja marca el centro de giro.</td></tr>
+<tr><td>Desplazar la pieza</td><td>Arrastrar con el botón derecho, con el central o con Mayús + izquierdo · flechas del teclado</td></tr>
+<tr><td>Acercar / alejar</td><td>Rueda: se acerca <b>hacia el punto que hay bajo el cursor</b>, no hacia el centro · teclas + y −</td></tr>
+<tr><td>Girar alrededor de un detalle</td><td><b>Doble clic</b> sobre él: pasa a ser el centro de giro y la vista se acerca un poco</td></tr>
+<tr><td>Volver a empezar</td><td>Botón <i>Inicial</i> o tecla R · <i>Encuadrar</i> (tecla F) ve toda la pieza sin cambiar la orientación</td></tr>
+</table>
+<p>Para revisar una zona concreta: doble clic en ella, rueda para acercarte y botón izquierdo para girar a su alrededor.
+Encima del visor hay vistas rápidas. En la malla: <i>Relieve de frente</i>, <i>Rasante</i> (casi tumbada, resalta el relieve)
+y <i>Perfil</i>. En la nube: <i>Arriba</i>, <i>Frente</i> y <i>Lado</i>.</p>
+<ul>
+  <li><b>Nube:</b> <i>Puntos</i> cambia el tamaño de los puntos (1–5 px). Se dibuja hasta un millón de puntos. Los
+      grupos sueltos salen en rojo (clic para conservarlos) y lo recortado en gris claro.</li>
+  <li id="recorte"><b>Nube, ✂ Recortar:</b> con el botón marcado, arrastra un rectángulo sobre la vista y se queda solo
+      lo de dentro (o se quita, según el desplegable de al lado). El rectángulo corta en la dirección en que miras,
+      atravesando toda la nube: gira antes la vista para que lo que quieres quede separado de lo demás (desde arriba
+      para una franja de terreno, de lado para quitar el suelo bajo una estatua). Se pueden encadenar varios recortes
+      desde vistas distintas; <i>Deshacer</i> quita el último y <i>Sin recortes</i>, todos. La cámara no se mueve.
+      Los recortes se guardan con los ajustes y en el registro de piezas, así que «Repetir» los vuelve a aplicar
+      (al abrir otra nube o procesar un lote se empieza sin ninguno). Es lo que antes había que hacer en CloudCompare
+      con <i>Segment</i>.</li>
+  <li><b>Malla, Luz:</b> <i>rasante móvil</i> es una luz baja desde la izquierda de la pantalla que gira contigo, así que
+      siempre marca el relieve de lo que miras. <i>Frontal</i> ilumina de frente y no deja zonas en sombra.
+      <i>Rasante fija</i> está fija en la pieza, como una foto con luz rasante.</li>
+  <li><b>Malla, Suave:</b> sombreado suave, que interpola la luz entre triángulos vecinos, como se verá la pieza
+      impresa. Sin marcar se ve cada triángulo plano. Viene marcado en los modos bloque y objeto.</li>
+  <li><b>Malla, Triángulos:</b> dibuja las aristas, para ver dónde ha simplificado el programa (triángulos grandes en
+      zonas lisas y pequeños en el detalle).</li>
+  <li>La malla se muestra completa hasta 1,5 millones de triángulos. Con la simplificación automática siempre
+      queda por debajo.</li>
+  <li><b>Malla, Color: desviación</b> (<a href="#desviacion">mapa de desviación</a>): colorea cada punto de la pieza según
+      lo que se separa del escaneo. Al lado, la escala (automática o fija) y el resumen.</li>
+  <li id="medir"><b>📏 Medir</b> (nube y malla): con el botón marcado, haz clic en un punto y después en otro. Al lado se
+      ve la distancia y lo que avanza en cada eje (Δx, Δy, Δz). En la <b>nube</b>, en mm reales del original; en la
+      <b>malla</b>, en mm de la pieza impresa y, al lado, los mm reales que corresponden según la escala. Un tercer
+      clic empieza otra medida y Esc la borra; mientras, se sigue pudiendo girar y hacer zoom. Sirve para comprobar
+      una medida conocida (si no coincide, revisa las <a href="#p-units">unidades</a>), para medir la altura de una
+      letra o la profundidad del relieve en la pieza.</li>
+  <li><b>Malla, Corte:</b> corta la pieza con un plano perpendicular al eje elegido (X, Y o Z) y la barra lo desplaza;
+      el contorno del corte se dibuja en rojo. Sirve para ver el grosor de la pared de una pieza hueca, los socavados o
+      el perfil del relieve. Solo cambia lo que se ve: la pieza guardada está entera.</li>
+</ul>
+
+<h3 id="atajos">Atajos de teclado</h3>
+<table>
+<tr><th>Tecla</th><th>Qué hace</th></tr>
+<tr><td>Ctrl+O</td><td>Abrir una nube o una malla</td></tr>
+<tr><td>Ctrl+W</td><td>Asistente</td></tr>
+<tr><td>Ctrl+P</td><td><a href="#vista-previa">Vista previa</a> (rápida, más gruesa)</td></tr>
+<tr><td>Ctrl+G</td><td>Generar la pieza</td></tr>
+<tr><td>Ctrl+S</td><td>Guardar la malla</td></tr>
+<tr><td>Ctrl+R</td><td><a href="#registro">Registro de piezas</a></td></tr>
+<tr><td>F1</td><td>Esta ayuda (pasos a seguir)</td></tr>
+<tr><td>Ctrl+Q</td><td>Salir</td></tr>
+<tr><td>R o Inicio · F · + y − · flechas · Esc</td><td>En el visor (tras hacer clic en él): vista inicial · encuadrar ·
+acercar y alejar · desplazar · borrar la <a href="#medir">medida</a></td></tr>
+</table>
+
+<h3 id="desviacion">Mapa de desviación: ¿cuánto se parece la pieza al escaneo?</h3>
+<p class="ej"><b>Dónde verlo:</b> tras <b>Generar</b>, en el panel <i>Resultado</i> la línea <i>Fidelidad al escaneo</i>
+da el resumen; su enlace <b>ver el mapa de desviación</b> abre la pestaña <i>Malla 3D</i> con la pieza coloreada (también
+se elige a mano en <i>Malla 3D → Color: desviación</i>). En la ficha PDF es la página 2. Con <i>Vista previa</i> también
+se calcula, pero con la resolución gruesa de la vista previa.</p>
+<p>Al generar, el programa lleva la nube original (sin alisar) a la pieza con la misma escala, giros, espejo, molde,
+exageración y desplazamientos que ha usado, y mide en cada vértice de la malla final la distancia al plano que forman
+los puntos del escaneo más cercanos, en <b>milímetros de la pieza</b>:</p>
+<ul>
+  <li><b style="color:#2b5ac8">Azul</b>: a la pieza le <b>falta</b> material (aristas redondeadas, detalle fino perdido
+      por la resolución o al simplificar).</li>
+  <li><b style="color:#d23228">Rojo</b>: le <b>sobra</b> (huecos rellenados, alisado de un surco, paredes verticales en
+      lugar de los bordes redondeados de la piedra en el método alturas).</li>
+  <li>Blanco: coincide. <b>Gris</b>: no hay escaneo cerca, o el que hay es otra superficie (mira hacia otro lado):
+      lo que añade el programa (base, trasera, paredes, tapa, el hueco, los agujeros y las letras).</li>
+</ul>
+<p>El resumen aparece en <i>Resultado</i> (<i>Fidelidad al escaneo</i>) y en la ficha PDF, que lleva una página con el mapa,
+el histograma y los porcentajes de superficie dentro de ±0,1, ±0,25 y ±0,5 mm. Incluye todo lo que hace el programa y
+también el ruido del propio escáner (a la escala de la pieza). Como orientación: con el objeto sintético a 120 mm, el 95 %
+de la superficie queda a menos de 0,07 mm; un relieve en modo alturas suele estar por debajo de 0,2 mm en la cara, con
+desviaciones mayores en los bordes, que ese método convierte en paredes verticales.</p>
+
+<h3>Después: laminado e impresión</h3>
+<ol>
+  <li>Abre el STL en tu laminador (PrusaSlicer, Cura, OrcaSlicer, Bambu Studio…). Ya viene con la escala elegida y la base sobre el plano Z=0.</li>
+  <li><b>Orientación.</b> Lo normal es imprimirlo tumbado, con la base sobre la cama. Si quieres más detalle vertical en el relieve,
+      puedes imprimirlo de pie (de canto). Las capas siguen entonces el relieve y se marcan menos, pero necesita borde de adherencia
+      (<i>brim</i>) y es más lento.</li>
+  <li><b>Altura de capa.</b> Usa la misma que pusiste en la pestaña <i>Avanzado</i> (o en el asistente); 0,1–0,12 mm para los relieves finos. Con capa variable (<i>variable layer height</i>), el laminador
+      afina solo en las zonas con pendiente.</li>
+  <li><b>Relleno.</b> Entre el 10 % y el 15 % es suficiente. El programa genera la pieza maciza; el vaciado lo hace el laminador.</li>
+  <li><b>Ficheros grandes.</b> Si el STL pesa demasiado para el laminador (más de unos 100 MB), aumenta la resolución
+      o simplifica la malla en MeshLab (<i>Filters &gt; Remeshing &gt; Quadric Edge Collapse Decimation</i>).</li>
+</ol>
+
+<!-- ============================================================ -->
+<h3 id="orientar">Orientar y cuadrar la pieza</h3>
+<p>La pestaña central <i>Orientación</i> muestra <b>la pieza tal como saldrá</b>, a su tamaño final en mm:
+giro, espejo, cara invertida, forma (contorno o placa), marco, recorte del borde, molde y exageración del relieve.
+Se actualiza al momento al cambiar cualquiera de esos valores, y se abre sola al entrar en la pestaña de parámetros <i>Orientar</i>.
+En <b>Vista rápida</b> es una rejilla gruesa (unas 400 celdas en el lado mayor): sirve para decidir el encuadre, no para
+ver el detalle fino.</p>
+<p id="detalle-pieza"><b>Ver el detalle antes de generar.</b> En el desplegable de la barra, <b>Detalle de la pieza</b>
+calcula el mapa de alturas de verdad, con la nube entera y la celda que tendrá la pieza, más el <a href="#p-boost">realce
+de lo pequeño</a>, el molde, la exageración y el marco. No hace la malla, ni la simplifica, ni calcula el mapa de
+desviación. La primera vez tarda unos segundos (3 s con los 10,7 millones de puntos de <code>lateral1</code>). Después,
+cambiar el realce, la exageración, el molde o el marco se ve en una décima de segundo, así que es la forma de ajustar el
+realce: sube el zoom sobre la letra gastada y mueve los valores. Girar, cambiar el tamaño, la resolución o los
+suavizados lo rehace. <b>Capas</b> redondea las alturas a la capa de la impresora: lo que no llega a media capa
+desaparece, y se ven los escalones que dejará la impresión. Es lo más parecido a la pieza impresa. En los tipos con
+Poisson (objeto, fragmento…) el detalle es solo una vista de frente más fina, sin el realce.</p>
+<ul>
+  <li>Las <b>guías</b> son una cuadrícula en mm de la pieza, centrada, con los ejes centrales en naranja. Elige la separación
+      en el desplegable (o «automática», unas 10 divisiones). El rectángulo exterior es la placa; con forma <i>rectángulo</i>
+      y marco, la línea punteada es el borde interior del marco.</li>
+  <li>El marco se dibuja en color piedra liso; lo escaneado, sombreado con luz rasante.</li>
+  <li>Rueda: zoom hacia el cursor · botón derecho: desplazar · doble clic: volver a encuadrar.</li>
+</ul>
+<p><b>Cuadrar el giro tomando algo como referencia.</b> Las herramientas fijan un giro exacto (desactivan
+<i>Enderezar automáticamente</i>) y todas se pueden deshacer con <i>Deshacer giro</i>:</p>
+<table>
+<tr><th>Herramienta</th><th>Qué hace</th><th>Cuándo usarla</th></tr>
+<tr><td><b>Línea de referencia</b></td><td>Arrastra con el botón izquierdo sobre la vista, a lo largo de algo que deba
+quedar recto. Al soltar, la pieza gira lo justo para que esa línea quede horizontal o vertical (la más cercana).</td>
+<td>Un renglón de una inscripción, el borde de una cartela, la moldura tallada o el canto de la piedra. Es la más precisa
+para encajar el relieve en un marco: cuanto más larga la línea, mejor.</td></tr>
+<tr><td><b>Alinear con líneas talladas</b></td><td>Busca la dirección dominante de las aristas rectas <i>dentro</i> del
+relieve (no el contorno) y la pone a escuadra.</td><td>Relieves con molduras, recuadros o letras; piedras de contorno roto.</td></tr>
+<tr><td><b>Enderezar por contorno</b></td><td>El mismo cálculo que <i>Enderezar automáticamente</i> (rectángulo mínimo
+del contorno), pero fijado como giro.</td><td>Piezas cuyo contorno exterior es recto.</td></tr>
+<tr><td><b>±90°, ±1°, ±0,1°</b></td><td>Gira esa cantidad (positivo = antihorario).</td><td>Poner la pieza de pie o
+cabeza abajo, y el ajuste fino a ojo con las guías.</td></tr>
+</table>
+<p>Ejemplo para un relieve con marco: en <i>Pieza</i> pon <i>Forma: rectángulo</i> y <i>Marco: 5 mm</i>; en <i>Orientar</i>,
+traza una línea sobre el renglón o la moldura más larga; si queda de lado, usa ±90°; afina con ±0,1° mirando cómo
+corren las guías paralelas a los bordes. Las dos herramientas automáticas conservan el cuarto de vuelta que tengas
+(no te devuelven la pieza de lado).</p>
+
+<!-- ============================================================ -->
+<h3 id="bloque">Bloque con sus laterales</h3>
+<p>El escaneo de una cara de un sillar o una estela casi siempre trae también parte de las <b>caras vecinas</b>:
+unos centímetros o decímetros de los laterales, el canto superior, a veces solo de algunos lados. En los ficheros de
+ejemplo es entre el 8 y el 20 % de los puntos, con laterales de 25 a 55 cm de fondo. Los métodos <i>alturas</i> y
+<i>3d</i> se quedan con una sola altura por celda (la de la cara) y esos puntos se pierden; el método <i>objeto</i>
+necesitaría el bloque escaneado entero. el botón <b>Bloque</b> (método bloque) es el término medio:</p>
+<ul>
+  <li>la cara y los laterales escaneados se reconstruyen con Poisson como <b>superficie real</b>, con su textura y sus roturas;</li>
+  <li>por detrás, el bloque se cierra con una <b>trasera plana</b> a la profundidad hasta la que llega el escaneo, como mucho
+      <a href="#p-behind">Profundidad máx.</a> (por defecto 250 en unidades de la nube); esa trasera es la cara que apoya en la cama;</li>
+  <li>donde un lateral no se escaneó, se cierra con una <b>pared vertical</b> siguiendo la silueta (el registro dice qué parte del
+      perímetro tenía escaneo);</li>
+  <li>el encuadre es el de siempre: giro, espejo, cara invertida, recorte del borde y la vista <i>Orientación</i> funcionan igual;
+      no se aplican el marco, la placa rectangular, el molde ni la exageración del relieve (deformaría los laterales).</li>
+</ul>
+<p>Con <code>lateral3</code> a 200 mm sale un bloque de 200 × 140 × 51 mm (con <i>3d</i>, 25 mm de grueso y laterales lisos),
+cerrado, en unos 2 min y con unos 4,6 GB de memoria. Para un bloque más fino, baja <i>Profundidad máx.</i>: el bloque se corta a esa profundidad.</p>
+
+<h3 id="esquina">Esquinas: dos caras con relieve en ángulo</h3>
+<p>La esquina de un friso, un sillar de esquina con inscripción o un ara con dos caras labradas tienen <b>dos caras que
+importan igual</b>. El método bloque está pensado para una cara principal y laterales cortos: la segunda cara solo pasa
+por Poisson y sale más blanda. Para estas piezas:</p>
+<ol>
+  <li><b>Si las dos caras están en ficheros distintos</b>, únelas con <i>Archivo › Unir otra nube…</i>:
+    <ul>
+      <li>si comparten coordenadas, «Ya están alineadas»;</li>
+      <li>si no, <b>«Por la arista»</b>: marca los dos extremos de la arista en la principal y los
+          mismos en la añadida, <b>en el mismo orden: primero el de abajo y después el de arriba</b> (si la arista
+          está tumbada, el mismo extremo primero en las dos), y di el <b>ángulo entre las caras</b>, medido por dentro de la piedra
+          (90° en un sillar). Con puntos sueltos no se puede: todos caerían en la arista, en línea, y la otra cara podría
+          girar alrededor de ella. El plano de cada cara y el borde de cada nube se ajustan solos; lo que depende de tus
+          clics es la posición a lo largo de la arista, así que marca bien las esquinas. Si la añadida sale hacia fuera
+          de la piedra (en caras casi lisas no se sabe de qué lado está), marca <i>Al otro lado</i>. Gracias al orden
+          de los clics, eso solo hay que acertarlo en la principal: el lado de la añadida sale de él, y la añadida no
+          puede quedar girada con lo de arriba abajo.</li>
+      <li id="franja"><b>Si un escaneo dobla un poco la esquina</b> y trae una franja de la otra cara (aunque sea de 1 o
+          2 cm), «Por la arista» la aprovecha sola (<i>Usar la franja de la otra cara, si la hay</i>, marcado de
+          serie):
+          <ul>
+            <li>el <b>ángulo se mide</b> en la franja y el escrito no cuenta: en piedra antigua rara vez es 90° justos;</li>
+            <li>la franja dice de qué lado está la piedra (no hace falta <i>Al otro lado</i>);</li>
+            <li>la zona común <b>afina la unión</b>, también a lo largo de la arista, que es lo que los clics fijan
+                peor. Para eso la franja necesita algo de relieve (una moldura, unos dentículos, el arranque de una
+                letra); si es lisa, lo largo de la arista sigue dependiendo de los clics.</li>
+          </ul>
+          En las pruebas (ejemplo de la esquina con una franja de 10 a 20 mm, clics con ±0,7 mm de error, caras a 88,5°,
+          90°, 95° y 120°): el ángulo sale con menos de 0,05° de error y la unión a 0,05–0,16 mm, frente a 1 mm solo con
+          los clics. Vale igual si la franja la trae la principal o la añadida. El registro dice cuánto se ha movido
+          la añadida respecto a los clics.</li>
+    </ul></li>
+  <li>Elige el tipo <b>Bloque</b> y marca <a href="#p-corner">Esquina (dos caras)</a>. Al abrir una nube con dos caras
+      grandes en ángulo, la propuesta automática ya lo hace.</li>
+</ol>
+<p>Cada cara tiene su <b>propio mapa de alturas</b>, con todo el tratamiento del modo alturas
+(<a href="#p-fill">relleno</a>, <a href="#p-despike">picos</a>, <a href="#p-gauss">suavizados</a>,
+<a href="#p-edges">aristas</a>), y la pieza es el bloque que queda detrás de las dos: cada cara llega hasta donde llega
+la otra, y por detrás se cierra con traseras paralelas a ellas. Arriba queda la cara mayor (con
+<a href="#p-flip">darle la vuelta</a>, la otra, o la que marques con <a href="#p-plane">tres puntos</a>). La malla se
+hace con tetraedros en marcha sobre una rejilla 3D del tamaño de celda de los mapas: sale cerrada siempre. Si una cara
+es más corta a lo largo de la arista, se alarga con su borde (el registro lo avisa).</p>
+<p>Con una sola cara y la otra en el modo alturas, <a href="#p-plane">Plano de la cara</a> «nube» miraría la pieza
+desde la esquina, entre las dos; la nota bajo ese campo lo avisa: elige «cara» o marca tres puntos.</p>
+
+<!-- ============================================================ -->
+<h3 id="objeto">Objetos completos (estatua, vasija, capitel)</h3>
+<p>Los métodos <i>alturas</i> y <i>3d</i> tratan la nube como un <b>relieve visto de frente</b>: buscan la cara principal,
+descartan lo que queda detrás y cierran la pieza con una base o una trasera plana. Si el objeto está escaneado
+<b>por todos los lados</b>, elige <b>Objeto</b> en <a href="#tipo">¿Qué has escaneado?</a> (método objeto), o lo mismo en el asistente:</p>
+<ol>
+  <li><b>Arriba</b> (pestaña <i>Orientar</i>): qué eje de la nube va hacia arriba al imprimir. Muchos escáneres usan Z;
+      la fotogrametría suele dejar el objeto con Y hacia arriba. La vista <i>Orientación</i> muestra el objeto <b>de frente,
+      de pie sobre la cama</b>: si sale tumbado o cabeza abajo, cambia <i>Arriba</i>. Los botones ±90°, ±1° y ±0,1° lo
+      giran en planta (alrededor del eje vertical), por ejemplo para que quepa en diagonal en la cama.</li>
+  <li><b>Corte de la base</b> (pestaña <i>Pieza</i>): el fondo de un objeto casi nunca está escaneado, porque apoyaba en la mesa.
+      El programa lo corta a esa altura sobre el punto más bajo y pone una tapa plana con la silueta del objeto a esa
+      altura, para que apoye bien. En la vista, la línea roja discontinua marca el corte y la franja sombreada es lo que se quita.</li>
+  <li><b>Generar</b>. El tamaño final es el del lado mayor del objeto en 3D.</li>
+</ol>
+<p>Cómo funciona: se submuestrea la nube a la resolución de impresión y se quitan los puntos sueltos y los grupos separados
+(restos de la mesa o del soporte). Si el PLY trae <b>normales</b> (<code>nx ny nz</code>, como guardan algunos escáneres) se usan
+tal cual. Si no, se estiman y se <b>orientan hacia fuera</b>: se propagan por la superficie entre puntos vecinos casi paralelos;
+donde hay aristas vivas o paredes finas (un labio, el borde de una hoja) la propagación no es segura, y ahí decide la
+<b>visibilidad</b>: todo lo escaneado se vio desde fuera, así que desde el lado exterior de cada punto los rayos escapan del
+objeto y desde el interior chocan con él. Después, Poisson apantallado da directamente un sólido cerrado, con sus huecos
+pasantes (asas) y socavados.</p>
+<p>Lo que no se escaneó lo rellena Poisson con la superficie más lisa posible: el interior de una vasija solo existe hasta
+donde se vio desde la boca, y por debajo la pieza sale maciza (el laminador la vaciará con el relleno). Si una zona sale
+con una «burbuja» o una lámina rara, suele faltar escaneo allí o hay normales mal orientadas; en ese caso ayuda guardar
+las normales desde el programa del escáner.</p>
+<p class="nota"><b>Para probarlo</b> sin escaneo propio: <i>Ayuda › Abrir un ejemplo › Vasija completa</i>, o
+<code>python3 generar_objeto_sintetico.py objeto.ply</code>, que crea una
+vasija sintética de 300 mm con asas, banda decorada, boca abierta y el fondo sin escanear (<code>--eje y</code> la deja con Y
+hacia arriba; <code>--normales</code> guarda también las normales). A 150 mm se genera en unos 45 s: una pieza cerrada
+de unos 47.000 triángulos tras simplificar.</p>
+
+<h3 id="curvo">Relieves sobre una superficie curva (miliario, columna, ara)</h3>
+<p>Una inscripción en un miliario o en el fuste de una columna no está en un plano: mirada de frente, las letras de los
+lados se ven estrechas y el relieve, montado sobre la curva. Con <b>Curvo</b> en <a href="#tipo">¿Qué has escaneado?</a>
+(<a href="#p-surface">Superficie: cilindro</a>) el programa:</p>
+<ol>
+  <li><b>ajusta un cilindro</b> a la nube: la dirección del eje, el centro y el radio, sin dejar que el propio relieve lo
+      tuerza. El registro dice el radio (y el diámetro), el arco que abarca la cara y lo que se separan de media los
+      puntos del cilindro;</li>
+  <li><b>desenrolla</b> la cara: cada punto pasa a «arco sobre el cilindro» (mm reales), «altura a lo largo del eje» y
+      «distancia al cilindro». La inscripción queda como una placa plana vista desde fuera, con el eje hacia arriba, y
+      con las <b>medidas reales a lo largo del arco</b> (media columna de Ø 400 mm da una placa de 628 mm de ancho);</li>
+  <li>a partir de ahí todo sigue igual que en un relieve: tamaño, forma, marco, molde, giro, socavados (método 3D),
+      vista previa… La pestaña <i>Orientación</i> enseña ya la cara desenrollada.</li>
+</ol>
+<p>Si el escaneo da la vuelta entera, se corta por el tramo con menos puntos; si la costura cae en mal sitio (en medio
+de una palabra), recorta en la vista de la nube una franja para que el hueco quede donde quieras. Si el cilindro sale
+con un radio enorme, la cara era casi plana y con <i>Relieve</i> da lo mismo. Para una pieza troncocónica o
+abombada (una vasija) el cilindro es una aproximación: lo que se separe de él aparece como relieve.</p>
+<p>La <a href="#medir">herramienta de medir</a> de la malla da los mm reales a lo largo del arco: útil para comprobar el
+desarrollo o medir la altura de las letras.</p>
+
+<h3 id="grabado">Grabados sobre roca (petroglifos, grafitos, icnitas)</h3>
+<p>En un panel de grabados, la roca tiene jorobas y pendientes de decenas de centímetros y el grabado mide unos pocos
+milímetros. Con <i>Relieve</i>, la pieza reproduce sobre todo la forma de la roca y el grabado apenas se nota. Con
+<b>Grabado</b> en <a href="#tipo">¿Qué has escaneado?</a> se resta a las alturas su <b>forma general</b>: en cada punto,
+la superficie suave (cuadrática) que mejor se ajusta a su entorno, de un ancho de
+<a href="#p-detrend">Quitar forma de la roca</a> mm. Queda solo lo más estrecho que eso, el grabado, sobre una placa
+plana que se puede exagerar (<a href="#p-z_scale">Exageración del relieve</a>) y convertir en molde. Es lo que en
+arqueología se llama <i>modelo de relieve local</i> o <i>residual</i>.</p>
+<ul>
+  <li><b>Cuánto quitar.</b> Al pulsar <i>Grabado</i> se propone una cuarta parte del lado mayor de la nube. Debe ser
+      bastante mayor que el trazo más ancho (3–5 veces): si es pequeño, también aplana el grabado; si es muy grande,
+      vuelve la forma de la roca. Mira el resultado en la pestaña <i>Orientación</i> mientras lo cambias.</li>
+  <li><b>Exageración.</b> Un grabado de 2 mm en una pieza a 1:4 se queda en medio milímetro, dos o tres capas: el
+      cálculo de la pestaña <i>Tamaño</i> ya da la profundidad sin la forma de la roca. Sube la exageración a 3–5×, o
+      usa capa fina. El asistente (<i>Calco del grabado</i>) pone 3×.</li>
+  <li><b>Lectura táctil.</b> Una placa con el grabado exagerado (o en molde, para que el trazo salga en relieve) sirve
+      para que se pueda tocar en una exposición.</li>
+</ul>
+<p>Si la roca tiene partes muy inclinadas (más de 60–70°) respecto a la vista, el mapa de alturas pierde detalle en
+ellas: recorta el panel en zonas más planas o usa «Mirar desde» para mirarlo de frente.</p>
+
+<h3 id="revolucion">Conos, vasijas abombadas y fragmentos de cerámica</h3>
+<p>En <a href="#tipo">Curvo</a>, debajo de los botones, se elige la <b>superficie</b>:</p>
+<ul>
+  <li><b>cilindro</b>: miliarios, fustes, aras (lo visto en el apartado anterior);</li>
+  <li><b>cono</b>: piezas troncocónicas (un vaso de paredes rectas, un fuste que adelgaza). El cono sí se puede
+      extender sin deformar: la cara sale como un <i>sector de corona</i>, con todas las medidas reales;</li>
+  <li><b>revolución</b>: piezas a torno abombadas (la banda decorada de una olla, un fuste con éntasis). Se busca el
+      eje de giro (todas las normales de una pieza de revolución lo cortan), se saca el perfil medio y la decoración
+      se desenrolla con él: cada altura con su circunferencia y la altura medida a lo largo del perfil, como en los
+      dibujos de vasijas. En las piezas muy abombadas la decoración se estira algo en horizontal; los tramos casi
+      horizontales del perfil (un hombro, un fondo) se deforman: recórtalos.</li>
+</ul>
+<p>Con el botón <b>Fragmento</b> (<i>una vasija a partir de un fragmento</i>), el fragmento de una pieza a torno se
+convierte en la <b>vasija entera</b>: se busca el eje, se saca la <b>sección</b> de la pared (dentro y fuera) y se gira
+360°. Sale la vasija en la altura que cubre el fragmento; si el fragmento no llega al fondo, se cierra con el corte plano
+de la base. Cuanto más abarque el fragmento alrededor del eje, más fiable el diámetro (el registro avisa por debajo de
+30°). Como un fragmento no dice qué lado es la boca, si sale al revés pon <a href="#p-up">Arriba</a> = −z.
+<b>Archivo › Guardar el perfil de la vasija (SVG)</b> escribe el perfil a tamaño real para el dibujo arqueológico: la
+sección en negro a un lado del eje, la silueta al otro y una escala gráfica (se abre en Inkscape o Illustrator). La
+propuesta automática reconoce los fragmentos (una pieza curva con dos paredes) y las caras de piezas a torno.</p>
+
+<h3 id="dos-caras">Monedas, medallas y tablillas de dos caras</h3>
+<p>Escanea el anverso y el reverso por separado. Abre el anverso y elige <b>Archivo › Añadir el reverso (pieza de dos
+caras)…</b>. Al generar, el reverso se pone debajo de la cara: se calcula su mapa de alturas mirándolo desde su lado,
+se espeja (se ve desde detrás) y se gira para que <b>los contornos coincidan</b>. <a href="#p-base">Grosor base</a>
+pasa a ser el <b>alma</b> entre las dos caras. La nota bajo <i>Quitar grupos sueltos</i> lo resume y permite:</p>
+<ul>
+  <li><b>giro…</b>: fijar el giro a mano. Hace falta en las piezas redondas (una moneda), donde el contorno es igual
+      se gire como se gire: el registro lo avisa. Mira la orientación de la cara de una moneda real (el «eje» de la
+      acuñación) y pon ese giro;</li>
+  <li><b>darle la vuelta</b>: si el reverso sale hundido (una lámina fina no dice solo de qué lado se mira; se decide
+      porque en un relieve el fondo es lo más bajo);</li>
+  <li><b>quitar</b>: volver a una sola cara.</li>
+</ul>
+<p>Si el canto está escaneado y las dos nubes se solapan, mejor <a href="#unir">únelas</a> y usa <i>Objeto</i>: el
+grosor y el giro serán los reales.</p>
+
+<h3 id="interior">Interiores: salas, cuevas, cisternas</h3>
+<p>Un escaneo desde dentro es la piel de un hueco. Con el botón <b>Interior</b> hay dos piezas
+(<a href="#p-interior">Interior</a>, en la pestaña Pieza):</p>
+<ul>
+  <li><b>corte</b>: una maqueta como una casa de muñecas. Se quita el techo por encima de
+      <a href="#p-ceiling">Altura del corte</a> y la sala queda como un hueco abierto por arriba dentro de un bloque,
+      con un margen alrededor: se ven la planta, los muros, los nichos y el suelo, y se imprime sin soportes;</li>
+  <li><b>negativo</b>: el volumen vacío como un sólido, la forma del «aire» de una cisterna, una cueva o una tumba.</li>
+</ul>
+<p>Las normales se orientan hacia dentro del hueco, como si se escanease desde dentro. Recorta antes lo que se vea
+por puertas y ventanas (el exterior). La propuesta automática toma por interior una superficie cerrada de más de
+1,5 m; si es un objeto grande escaneado por fuera, elige <i>Objeto</i>.</p>
+
+<h3 id="comparar">Comparar dos escaneos (deterioro)</h3>
+<p>Con el escaneo antiguo abierto, <b>Archivo › Comparar con otro escaneo (deterioro)…</b> pide el nuevo y lo alinea en
+la misma ventana que <a href="#unir">unir nubes</a> (ya alineadas, por puntos o automática). Después se afina con un
+ICP <b>robusto</b>: las zonas que han cambiado no tiran de la alineación, que se apoya en lo que sigue igual. Para cada
+punto del escaneo nuevo se mide la distancia con signo a la superficie del antiguo:</p>
+<ul>
+  <li><b>azul</b>: material perdido (erosión, desconchados, pérdida de policromía con volumen);</li>
+  <li><b>rojo</b>: material de más (costras, depósitos, morteros nuevos);</li>
+  <li><b>gris</b>: sin escaneo antiguo debajo.</li>
+</ul>
+<p>El resumen da qué parte de la superficie ha perdido o ganado más de un umbral (por defecto, tres veces el ruido de
+la comparación, que también se da: por debajo de él no hay cambio real) y los máximos. Se puede guardar un
+<b>informe PDF</b> (planta coloreada, histograma y resumen) y la nube coloreada (PLY). Desde la consola:
+<code>python3 comparar.py antes.ply despues.ply informe.pdf</code>.</p>
+
+<h3 id="lidar">LiDAR aéreo por clases (LAS/LAZ)</h3>
+<p>Los LAS del PNOA y de casi todos los vuelos traen la <b>clase</b> de cada punto (suelo, vegetación, edificios,
+agua, ruido…). Al abrir uno, la nota bajo <i>Quitar grupos sueltos</i> dice cuántos puntos hay de cada clase y deja
+elegir: <b>todas</b> (menos el ruido, que nunca se usa), <b>solo suelo</b> (el terreno desnudo, sin árboles ni casas:
+lo mejor para un yacimiento bajo el bosque), <b>suelo y edificios</b> (una maqueta sin árboles) o <b>elegir…</b> cada
+clase. Si el fichero no trae clases, <b>Quedarse solo con el suelo</b> lo calcula con un filtro morfológico progresivo:
+el punto más bajo de cada celda, «abierto» con ventanas cada vez mayores; lo que sobresale más de lo que permite la
+pendiente del terreno no es suelo. La elección se guarda en los ajustes; en la consola, <code>--clases 2,6</code> o
+<code>--clases suelo</code>.</p>
+
+<h3 id="unir">Unir varias nubes en una sola pieza</h3>
+<p>Una pieza escaneada en dos vueltas (de pie y después tumbada para sacar la base), el anverso y el reverso, o dos
+tandas de fotogrametría de un monumento: con la nube principal abierta, <b>Archivo › Unir otra nube…</b> (o el enlace
+<i>Unir otra nube…</i> bajo <i>Quitar grupos sueltos</i>) abre una ventana con las dos nubes, la principal en azul y la
+añadida en naranja. Hay tres maneras de encajarlas:</p>
+<ul>
+  <li><b>Ya están alineadas.</b> Comparten coordenadas: salen del mismo proyecto de fotogrametría, están
+      georreferenciadas (UTM) o se exportaron juntas del programa del escáner. Se juntan tal cual, cada una pasada a mm
+      con sus unidades. La ventana lo elige sola si al abrirla las nubes ya se tocan.</li>
+  <li><b>Por puntos (recomendada).</b> Haz clic en un detalle de la principal y después en el mismo detalle de la
+      añadida; repite con al menos <b>3 pares</b> bien repartidos (esquinas, letras, roturas; no todos en línea) y pulsa
+      <i>Alinear</i>. Si las nubes se solapan, se afina después con toda la zona común (ICP), y el error de los clics
+      desaparece: en las pruebas, de 1–5 mm de los pares a 0,1 mm. Es la única manera si no se solapan (por ejemplo,
+      dos caras de un bloque escaneadas sin las esquinas): entonces la unión vale lo que los clics.</li>
+  <li><b>Automática.</b> Busca sola la zona común (puntos característicos FPFH + RANSAC y después ICP) y la comprueba
+      repitiéndola al revés. Acierta cuando la zona común tiene forma marcada (aristas, esquinas, un bloque con sus
+      laterales) y un buen solape (30 % o más). <b>En piezas casi planas o lisas</b> (una lápida, una roca) la añadida
+      puede <b>resbalar</b> sobre la principal y quedar con una separación igual de pequeña que la buena, y en
+      <b>piezas simétricas</b> (vasijas, columnas) puede quedar girada. Por eso nunca se da por buena sin mirarla.</li>
+</ul>
+<p>Tras alinear, la ventana dice qué parte de la añadida cae sobre la principal y la separación media allí, con un
+aviso si algo no cuadra. Con el color <b>zona común</b> la parte solapada se ve en verde: compruébala girando la
+vista antes de pulsar <i>Unir</i>.</p>
+<p>Al unir, se quitan de la nube añadida los puntos que repiten la zona común (para que no haya doble piel) y todo
+sigue como con una sola nube: recortes, tipo de pieza, generar. La unión se guarda en los ajustes, como los recortes, y
+la recuerdan «Repetir», el registro de piezas y la consola (<code>--ajustes</code>). La nota bajo <i>Quitar grupos
+sueltos</i> dice qué nubes están unidas y permite quitar la última o todas. Si cambias las <i>Unidades de la
+nube</i> de la principal, las uniones se quitan, porque estaban encajadas con las anteriores.</p>
+<p id="guardar-union"><b>Guardar lo unido para no repetirlo.</b> Hay dos maneras, y en las dos se abre sin volver a
+alinear:</p>
+<ul>
+  <li><b>Archivo › Guardar ajustes…</b> guarda el encaje de cada nube unida (su posición, no los puntos), los recortes,
+      los grupos conservados, el reverso, todos los parámetros y qué nube estaba abierta. Después, <b>Archivo › Cargar
+      ajustes…</b> abre esa nube y une las demás en su sitio: lo único que tarda es leer los ficheros. Ocupa unos
+      kB, pero necesita los ficheros originales donde estaban (o en la misma carpeta que los ajustes).</li>
+  <li><b>Archivo › Guardar la nube unida…</b> escribe todas las nubes, ya encajadas, en un solo PLY (en mm, con su
+      color y normales). Se abre como cualquier nube, y sirve también para otros programas (CloudCompare, MeshLab).
+      Va sin limpiar ni recortar: eso sigue en los ajustes. Si la abres, no cargues después unos ajustes que tengan
+      las uniones, o se unirían dos veces.</li>
+</ul>
+
+<h2 id="ejemplos">2. Ejemplos: cómo cambia la pieza</h2>
+<p>Todos los datos de esta sección están <b>medidos</b> con <code>lateral3.ply</code>: una cara de piedra de unos
+1,3 × 0,8 m escaneada con 3,2 millones de puntos. Salvo que se diga otra cosa, se usan los valores por defecto:
+lado mayor de 200 mm, boquilla de 0,4 mm, capa de 0,2 mm, calidad alta, resolución y simplificación automáticas.
+Los tiempos son de un portátil con 4 núcleos.</p>
+
+<h3>Tamaño final de la pieza</h3>
+<table>
+<tr><th>Lado mayor</th><th>Resolución (limita)</th><th>Celda en la pieza</th><th>Triángulos</th><th>STL</th><th>Relieve</th><th>Tiempo</th></tr>
+<tr><td>100 mm</td><td>2,5 (boquilla)</td><td>0,20 mm</td><td>17.944</td><td>0,9 MB</td><td>9,8 mm · 49 capas</td><td>12 s</td></tr>
+<tr><td><b>200 mm</b></td><td>1,2 (boquilla)</td><td>0,19 mm</td><td>76.850</td><td>3,8 MB</td><td>19,1 mm · 95 capas</td><td>22 s</td></tr>
+<tr><td>400 mm</td><td>1,1 (<b>escaneo</b>)</td><td>0,35 mm</td><td>182.400</td><td>9,1 MB</td><td>38 mm · 190 capas</td><td>21 s</td></tr>
+</table>
+<p>Al <b>duplicar el tamaño</b>, la celda en la pieza se mantiene en media boquilla (0,2 mm) y los triángulos se
+multiplican por unos 4. A 400 mm, el escaneo ya no da para 0,2 mm: la celda sube a 0,35 mm y una pieza más grande no
+gana detalle, solo tamaño. Además, a 400 mm el recuadro avisa de que <span class="bad">✘ no cabe</span> en una cama de
+220 × 220.</p>
+
+<h3>Boquilla</h3>
+<table>
+<tr><th>Boquilla</th><th>Resolución (limita)</th><th>Celda en la pieza</th><th>Triángulos</th><th>STL</th></tr>
+<tr><td>0,25 mm</td><td>1,1 (<b>escaneo</b>)</td><td>0,17 mm</td><td>91.202</td><td>4,6 MB</td></tr>
+<tr><td><b>0,4 mm</b></td><td>1,2 (boquilla)</td><td>0,19 mm</td><td>76.850</td><td>3,8 MB</td></tr>
+<tr><td>0,6 mm</td><td>1,8 (boquilla)</td><td>0,29 mm</td><td>34.412</td><td>1,7 MB</td></tr>
+<tr><td>0,8 mm</td><td>2,5 (boquilla)</td><td>0,40 mm</td><td>35.890</td><td>1,8 MB</td></tr>
+</table>
+<p><img src="ayuda_img/ej_nozzle.png" width="700"></p>
+<p class="fig">Zona de 50 × 40 mm de la pieza. Con 0,8 mm se pierden la textura de la piedra y los bordes de la
+incisión. Entre 0,4 y 0,25 mm casi no hay diferencia, porque a 200 mm el escaneo no tiene más detalle que dar.</p>
+
+<h3>Calidad y altura de capa: cuánto se simplifica</h3>
+<table>
+<tr><th>Ajuste</th><th>Tolerancia</th><th>Triángulos</th><th>STL</th><th>Error p99</th><th>Error máximo</th></tr>
+<tr><td>Sin simplificar (100 %)</td><td>—</td><td>2.459.212</td><td>123 MB</td><td>0</td><td>0</td></tr>
+<tr><td>Calidad normal</td><td>0,10 mm</td><td>19.212</td><td>1,0 MB</td><td>0,091 mm</td><td>1,06 mm</td></tr>
+<tr><td><b>Calidad alta</b></td><td>0,05 mm</td><td>76.850</td><td>3,8 MB</td><td>0,034 mm</td><td>0,11 mm</td></tr>
+<tr><td>Calidad máxima</td><td>0,025 mm</td><td>153.692</td><td>7,7 MB</td><td>0,022 mm</td><td>0,066 mm</td></tr>
+<tr><td>Alta con capa de 0,1 mm</td><td>0,025 mm</td><td>153.692</td><td>7,7 MB</td><td>0,022 mm</td><td>0,066 mm</td></tr>
+<tr><td>Alta con capa de 0,3 mm</td><td>0,075 mm</td><td>38.424</td><td>1,9 MB</td><td>0,059 mm</td><td>0,30 mm</td></tr>
+</table>
+<p>La simplificación quita entre el 94 % y el 99 % de los triángulos y el fichero pasa de 123 MB a 1–8 MB. La calidad
+<i>normal</i> ya deja algún punto suelto con un error de 1 mm, y por eso la opción por defecto es <i>alta</i>. Una capa
+más fina pide más precisión, porque el laminador reproduce detalles más finos en vertical.</p>
+
+<h3>Suavizado</h3>
+<p><img src="ayuda_img/ej_smooth.png" width="700"></p>
+<p class="fig"><i>Suavizado mediana</i> 0, 3 y 9 celdas. Sin suavizado se ve el «grano» del escáner, más fino que lo que
+imprime la boquilla. Con 3 desaparece el ruido y se conservan los bordes de la incisión. Con 9 los bordes se
+redondean y se pierden los detalles pequeños.</p>
+<p><img src="ayuda_img/ej_gauss.png" width="700"></p>
+<p class="fig"><i>Suavizado gaussiano</i> 0, 0,5 y 1,5 (unidades de la nube, es decir, mm de la piedra). A diferencia de
+la mediana, el gaussiano también redondea los bordes. Es útil para un acabado «pulido», no para quitar ruido.</p>
+
+<h3>Percentil del frente</h3>
+<p><img src="ayuda_img/ej_front_pct.png" width="700"></p>
+<p class="fig">Percentil 100, 90 y 50, sin suavizado. Con 100 se toma el punto más saliente de cada celda y el ruido
+del escáner queda más marcado. Con 50 se toma la mediana, más lisa pero ligeramente hundida (incluye puntos de los
+laterales de las incisiones).</p>
+
+<h3>Exageración del relieve y recorte del fondo</h3>
+<p><img src="ayuda_img/ej_perfiles.png" width="700"></p>
+<p class="fig">Corte transversal por el centro de la pieza. <b>Izquierda:</b> con exageración 2× el relieve pasa de
+19 a 38 mm (de 95 a 190 capas) y la pieza de 25 a 46 mm de alto; la base sigue midiendo 3 mm. <b>Derecha:</b> sin
+recorte del fondo (0 %), los puntos más bajos del contorno, que son restos de los laterales del bloque, obligan a una
+base de 54 mm. Con un 5 % la pieza mide 25 mm, y con un 20 % 18 mm, aunque ya se aplanan las zonas bajas del
+propio relieve.</p>
+
+<!-- ============================================================ -->
+<h2 id="recetas">3. Valores de ejemplo para casos habituales</h2>
+<p>Puntos de partida para ajustar después. Lo que no se indica se deja con su valor por defecto. Son las mismas
+recetas que aplica el <a href="#asistente">asistente</a>.</p>
+{{RECETAS}}
+
+<!-- ============================================================ -->
+<h2 id="parametros">4. Parámetros</h2>
+<p class="nota">En cada parámetro se indican sus unidades. <b>«Unidades de la nube»</b> son las del escaneo,
+normalmente mm reales del objeto. <b>«mm de la pieza»</b> son los milímetros de la pieza impresa, después de escalar.
+Van en el mismo orden que en la ventana: primero el tipo de pieza y después pestaña por pestaña. Cada parámetro solo
+aparece en la ventana cuando cuenta con el tipo de pieza elegido.</p>
+
+<h3 class="grupo">¿Qué has escaneado?</h3>
+<p class="def">Los ocho botones de arriba de los parámetros</p>
+<h3 id="p-mode">Método</h3>
+<p class="def">Lo eligen los botones de <a href="#tipo">¿Qué has escaneado?</a>: Relieve y Curvo = alturas (3d con «Tiene
+partes que vuelan»), Grabado = alturas, Bloque = bloque, Objeto, Terreno, Fragmento e Interior = objeto</p>
+<ul>
+  <li><b>alturas</b> (por defecto): mapa de alturas con paredes y base. Tarda segundos, el resultado siempre está cerrado y se
+      pueden usar todas las opciones. Pierde los socavados.</li>
+  <li><b>3d</b>: reconstrucción de Poisson apantallada. Como un escaneo de una sola cara no encierra ningún volumen, el programa
+      añade puntos sintéticos que forman una <b>trasera plana</b> y <b>paredes</b> siguiendo el contorno; así la cara escaneada
+      queda como la tapa de una caja y Poisson devuelve un sólido cerrado. <b>Conserva los socavados</b> y respeta mejor las
+      superficies inclinadas. Diferencias con el modo alturas:
+      <ul>
+        <li>la superficie sale directamente de los puntos: <i>Percentil frente</i>, <i>Relleno de huecos</i> y los suavizados
+            solo afectan al contorno y a la altura de las paredes; el suavizado lo hace el propio Poisson;</li>
+        <li><i>Quitar picos</i> elimina los puntos que sobresalen del frente más que el umbral, y siempre se aplica una
+            limpieza estadística de puntos sueltos;</li>
+        <li><i>Molde</i> y <i>Marco</i> no se aplican (un molde con socavados no se podría desmoldar);</li>
+        <li>la resolución hace de tamaño de vóxel: los puntos se submuestrean a esa distancia antes de reconstruir.</li>
+      </ul>
+      Necesita Open3D y PyMeshLab (consulta <a href="#requisitos">Requisitos</a>).</li>
+  <li><b>bloque</b>: la cara y los <b>laterales escaneados</b> del bloque, que los dos anteriores descartan, cerrado por detrás
+      con una trasera plana a la <i>Profundidad máx.</i> y con paredes verticales donde no hay lateral. Consulta
+      <a href="#bloque">Bloque con sus laterales</a>.</li>
+  <li><b>objeto</b>: para objetos escaneados <b>por todos los lados</b>. No hay cara frontal ni mapa de alturas: la nube se
+      reconstruye entera en 3D y se corta por abajo para que apoye en la cama. Cuentan <i>Arriba</i>, <i>Giro</i> (en planta),
+      <i>Espejar</i>, <i>Corte de la base</i>, la resolución, la profundidad Poisson y los de impresión; los demás se desactivan.
+      Consulta <a href="#objeto">Objetos completos</a>.</li>
+</ul>
+<p>En los ficheros de ejemplo (<code>lateral1</code>–<code>3</code>), que son bajorrelieves, los dos métodos dan resultados casi
+idénticos (las diferencias se limitan a las aristas del bloque). El modo 3D marca la diferencia en altorrelieves y figuras con partes despegadas.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> alturas para ajustar y para casi todos los relieves · 3d para la versión final de un altorrelieve ·
+bloque para reproducir el sillar con sus laterales ·
+objeto para estatuas, vasijas, capiteles y cualquier pieza escaneada por todos los lados.</p>
+<h3 id="p-ground">Abierto por abajo</h3>
+<p class="def">Solo modo objeto · sí/no · por defecto no · botón <i>Terreno</i> de <a href="#tipo">¿Qué has escaneado?</a></p>
+<p>Para escaneos que solo tienen la superficie de arriba: un terreno, una ruina, un puente, un acueducto o un edificio
+sacado por fotogrametría desde el aire o desde el suelo. Poisson necesita un sólido cerrado y, si el escaneo no rodea
+el objeto, se inventa una superficie para cerrarlo: una «burbuja» lejos de los puntos. Con esta opción, en vez de
+cortar la base, el programa pone paredes verticales en todo el contorno de la planta (desde el borde del escaneo hasta
+abajo) y una base plana <a href="#p-base">Grosor de base</a> mm por debajo del punto más bajo, y con ellas decide
+también qué lado de cada superficie es el de fuera (el que se ve desde arriba o desde los lados). Lo que tenga el
+escaneo se conserva en 3D: los <b>arcos y vanos pasantes</b> siguen pasantes. Con el acueducto de ejemplo
+(37 × 16 × 4 m) da una maqueta cerrada de 200 × 86 × 26 mm en menos de un minuto, a 0,03 mm de media del escaneo.</p>
+<p>Si no se activa y Poisson inventa más del 3 % de la superficie, el registro lo avisa y lo sugiere. Lo inventado
+se ve gris en el <a href="#desviacion">mapa de desviación</a>. Si sobra terreno alrededor o restos sueltos,
+recórtalos antes en la <a href="#recorte">vista de la nube</a>.</p>
+<p class="ej"><b>Valores de ejemplo:</b> sí para terrenos, ruinas y monumentos sin la parte de abajo · no para objetos
+escaneados por todos los lados.</p>
+<h3 id="p-surface">Superficie</h3>
+<p class="def">plano / cilindro / cono / revolucion · por defecto plano · botón <i>Curvo</i> (y su desplegable) o
+<i>Fragmento</i> de <a href="#tipo">¿Qué has escaneado?</a></p>
+<p>Sobre qué superficie está el relieve. <b>plano</b>: lo normal; la cara se mira de frente o desde el lado elegido en
+<a href="#p-view">Mirar desde</a>. <b>cilindro</b>: se ajusta un cilindro a la nube y la cara se desenrolla como una
+placa plana, con las medidas reales a lo largo del arco (consulta <a href="#curvo">Relieves sobre una superficie
+curva</a>). Con cilindro la cara se mira siempre desde fuera y <i>Mirar desde</i> no cuenta.</p>
+<p class="ej"><b>Valores de ejemplo:</b> cilindro para miliarios, fustes de columna, aras cilíndricas, sellos
+cilíndricos · cono para piezas troncocónicas · revolucion para la decoración de una vasija abombada (o, con el método
+objeto, para reconstruir la vasija a partir de un fragmento: <a href="#revolucion">ver</a>) · plano para todo lo
+demás.</p>
+<h3 class="grupo">Pestaña Tamaño</h3>
+<h4 class="grupo">La nube</h4>
+<h3 id="p-units">Unidades de la nube</h3>
+<p class="def">auto, mm, cm, m o pulgadas · por defecto auto</p>
+<p>Al abrir la nube se pasa a milímetros, y desde ahí todas las medidas (Profundidad máx., Resolución, Quitar picos…)
+están en mm. En automático, una nube de menos de 20 unidades de lado se toma como metros (una piedra no mide 2 cm) y lo
+demás como milímetros; el registro dice qué ha supuesto. Si te equivocas, la pieza a escala o «tamaño real» saldría
+1000 veces más grande o más pequeña: con el lado mayor final no importa, porque se escala igual. Al cambiarlo, la nube
+se vuelve a leer.</p>
+<h3 id="p-clean">Quitar grupos sueltos</h3>
+<p class="def">Sí/no · por defecto sí</p>
+<p>Al abrir la nube se lee entera y no se pierde nada: los puntos de los grupos sueltos se pintan <b>en rojo</b> en la
+pestaña <i>Nube de puntos</i>, junto con el resto, y la ficha del fichero dice cuántos son. Si alguno es parte de la
+pieza (un asa separada por un hueco del escaneo, una pieza en dos trozos), <b>haz clic sobre él</b> en la vista: se
+pone en verde y se conserva; otro clic lo vuelve a quitar. La cámara no se mueve, así que puedes ir eligiendo varios.
+Desmarcar la casilla conserva todos a la vez. Todo se aplica al momento, sin volver a leer el fichero. Los grupos
+elegidos se guardan con los ajustes (por sus centros), así que «Repetir» desde el registro los vuelve a conservar; al
+abrir otra nube o procesar un lote se empieza sin ninguno. Para buscarlos se agrupan los puntos en una rejilla de unos 300 vóxeles de lado, se buscan las partes conectadas y
+se quitan las que tienen menos del 2 % de los puntos de la mayor: puntos sueltos, reflejos, trozos de suelo o de
+soporte separados de la pieza. Se hace antes que nada, así que el plano de la cara, las medidas y la vista de
+orientación ya no se ven afectados por ellos. Con la vasija sintética quita 548 de sus 595 puntos sueltos (los demás
+están pegados a la superficie y los quitan los filtros de cada método); con <code>lateral3</code>, unos retazos de la
+cara trasera separados del bloque. El número de puntos quitados queda en la ficha PDF y en el registro de piezas.</p>
+<h4 class="grupo">Tamaño</h4>
+<h3 id="p-target_len">Lado mayor final</h3>
+<p class="def">mm de la pieza · por defecto 200 · «tamaño real» = 1:1</p>
+<p>Escala todo para que el lado mayor de la pieza mida esto (en modo objeto, el lado mayor en 3D, alto incluido). Con «tamaño real» se exporta en las unidades de la nube.
+También puedes escalar después en el laminador, pero entonces la base y el marco escalan con la pieza
+y dejan de medir lo que pusiste.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 200 mm · 60–100 para recuerdos · 300–400 para exposición (comprueba la cama).</p>
+<h3 id="p-ratio">Escala 1:</h3>
+<p class="def">Por defecto «según lado mayor» (0) · 1 = tamaño real</p>
+<p>Escala exacta de la réplica: con 5, cada 5 mm de la piedra son 1 mm de la pieza. Si la fijas, manda sobre el lado
+mayor final (que se desactiva). Es lo que conviene para documentar y comparar réplicas, porque la escala queda redonda
+y consta en la ficha PDF. Necesita que las <a href="#p-units">unidades de la nube</a> sean las correctas.</p>
+<p class="ej"><b>Valores de ejemplo:</b> 1 (tamaño real) · 2, 5, 10 · 20 para piezas grandes.</p>
+<h3 class="grupo">Pestaña Pieza</h3>
+<h3 id="p-shape">Forma</h3>
+<ul>
+  <li><b>Contorno:</b> la pieza sigue la silueta real escaneada.</li>
+  <li><b>Rectángulo:</b> placa rectangular. Lo que queda fuera del contorno se rellena a la altura del fondo.
+      Combínalo con <i>Enderezar automáticamente</i> y con un <i>Marco</i>.</li>
+</ul>
+
+<p class="ej"><b>Valores de ejemplo:</b> contorno para una copia de la piedra · rectángulo para placas y moldes.</p>
+<h3 id="p-z_scale">Exageración del relieve</h3>
+<p class="def">Factor · por defecto 1</p>
+<p>Multiplica las alturas del relieve sin cambiar el tamaño en planta. Los relieves muy erosionados (como
+<code>lateral3</code>) o las piezas impresas muy pequeñas ganan legibilidad con 1,5–3. Ten en cuenta que deforma la
+geometría real; no lo uses si buscas una réplica fiel.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 1 (real) · 1,5–2 para relieves gastados o piezas pequeñas · 3 o más solo como efecto.</p>
+<h3 id="p-boost">Realzar lo pequeño</h3>
+<p class="def">Todos los tipos de pieza · factor · por defecto no (1)</p>
+<p>Realza solo los detalles de poco relieve, hacia fuera y hacia dentro (letras gastadas, incisiones finas, una palma
+casi borrada), sin tocar las formas grandes. A diferencia de la <a href="#p-z_scale">exageración</a>, que lo
+multiplica todo, aquí cada detalle se mide respecto a su entorno (<a href="#p-boost_size">Anchura del detalle</a>) y
+crece según su profundidad. <b>Los tres umbrales van en mm de la piedra</b>, lo que mides en la nube: así se
+eligen mirando el escaneo y no cambian si luego haces la pieza a otro tamaño. Debajo de los campos se ve cuánto es
+cada uno en la pieza. Con «auto» valen lo que en la pieza son 0,1 mm, 0,5 mm y 3 mm.</p>
+<ul>
+  <li>por debajo de la mitad de <a href="#p-boost_lo">Realzar desde</a> no se toca: es ruido del escaneo;</li>
+  <li>de esa mitad a <i>Realzar desde</i> el aumento sube poco a poco hasta el factor entero (×2: el doble). La
+      subida es gradual y no de golpe en el umbral, porque un salto haría un escalón en el borde de cada detalle;</li>
+  <li>a partir de ahí el aumento es cada vez menor y en <a href="#p-boost_hi">Realzar hasta</a> ya no se añade nada.
+      Con ×2, desde 1 y hasta 5 mm: 1 → 2 · 2 → 2,8 · 3 → 3,5 · 4 → 4,2 · 5 → 5 mm;</li>
+  <li>un detalle nunca adelanta a otro más alto, y justo al lado de un canto grande (el borde de la pieza, una
+      moldura) el realce se apaga, para que no salga un escalón falso; un poco más allá ya realza.</li>
+</ul>
+<p>Lo que se ha añadido se ve en el <a href="#desviacion">mapa de desviación</a> (en rojo lo que ha subido, porque
+sobra material respecto al escaneo; en azul lo que se ha hundido). Para verlo antes de generar, pon la vista <i>Orientación</i> en <a href="#detalle-pieza">Detalle de la pieza</a> y
+acerca el zoom: el realce se actualiza al momento al cambiar los valores; con <i>Capas</i>, como quedará impreso. Para probarlo:
+<i>Ayuda › Abrir un ejemplo › Lápida gastada</i>.</p>
+<p>Vale para todos los tipos de pieza. En los que se hacen con el mapa de alturas (relieve, curvo, grabado) se
+aplica a las alturas. En los que se hacen con Poisson (objeto, fragmento, interior, terreno, bloque, o relieve con
+socavados) se aplica a la malla terminada: cada detalle se mide respecto a una superficie suave ajustada a su
+entorno, que sigue las curvas de la pieza (una vasija, una columna) sin tomarlas por detalle, y se mueve a lo largo
+de la normal. Ahí el realce también se apaga junto a una arista viva (el corte de la base, la esquina de un
+sillar), donde la superficie de al lado tiene otra orientación. En estos tipos no se ve en la vista previa, solo en
+la pieza hecha y en su mapa de desviación.</p>
+<p><b>Un ejemplo con números.</b> En <code>lateral1</code> (3,5 m impresos a 200 mm: 1 mm de la piedra = 0,057 mm
+de la pieza) hay una «F» muy gastada, hundida 1,55 mm en la piedra. Sin realce quedaría en 0,09 mm en la pieza, menos
+de media capa: no se imprime. Con ×4, desde 1 mm, hasta 5 mm y anchura 70 mm (lo que se mide en la piedra: la F tiene
+trazos de unos 45 mm) pasa a unos 0,23 mm, algo más de una capa. Si luego la haces a 400 mm no hay que tocar nada: la
+nota de debajo de los campos dice cuánto es en la pieza.</p>
+<p>El entorno con el que se mide cada detalle es la mediana de lo que lo rodea: una letra gastada junto a una letra
+grande o una moldura se mide respecto a la piedra, no respecto a ellas (que ocupan menos de la mitad del entorno).
+Si «Anchura del detalle» es menor que el trazo, solo se realzan sus bordes; súbela a algo más que el trazo más
+ancho.</p>
+<p class="ej"><b>Valores de ejemplo:</b> ×2 con todo en «auto» (lo que ocupa menos de una capa de 0,2 mm pasa a ocupar
+una o dos) · «desde» un poco por debajo de lo que mide en la piedra la letra que quieres sacar, y «hasta» unas 3–5
+veces más · ×4–8 si la pieza es mucho más pequeña que la piedra · ×1,5 si solo quieres asegurar que se vea.</p>
+<h3 id="p-boost_lo">Realzar desde</h3>
+<p class="def">mm de la piedra · por defecto auto (lo que en la pieza son 0,1 mm)</p>
+<p>Profundidad del detalle, medida en la piedra, que recibe el realce entero. Su mitad es el umbral: por debajo no se toca nada. Si el escaneo
+es ruidoso (fotogrametría con poca luz), súbelo para no realzar el grano de la piedra.</p>
+<h3 id="p-boost_hi">Realzar hasta</h3>
+<p class="def">mm de la piedra · por defecto auto (lo que en la pieza son 0,5 mm, y al menos el triple de «desde»)</p>
+<p>Profundidad del detalle, en la piedra, a la que el realce ya es nulo. Lo que pasa de esto (los relieves que ya se ven bien) queda como
+está.</p>
+<h3 id="p-boost_size">Anchura del detalle</h3>
+<p class="def">mm de la piedra · por defecto auto (lo que en la pieza son 3 mm)</p>
+<p>Radio del entorno, en la piedra, con el que se mide la altura de cada detalle: algo mayor que el trazo más ancho que se quiere
+realzar. Si es pequeño, el fondo de los trazos anchos se toma por entorno y solo se realzan sus bordes; si es muy
+grande, las ondulaciones suaves de la losa también cuentan como detalle.</p>
+
+<h3 id="p-detrend">Quitar forma de la roca</h3>
+<p class="def">Solo modo alturas, tipos Grabado y Curvo · mm reales · por defecto no · al pulsar <i>Grabado</i>, ¼ del lado
+mayor de la nube</p>
+<p>Resta a las alturas la forma general de la superficie: en cada punto, la superficie suave que mejor se ajusta a un
+entorno de este ancho. Quedan solo los detalles más estrechos: el grabado. Debe ser 3–5 veces el trazo más ancho del
+grabado; con un valor pequeño también se aplana el grabado y con uno muy grande vuelve la forma de la roca. El
+cálculo de impresión y la vista <i>Orientación</i> lo reflejan al momento. Consulta <a href="#grabado">Grabados sobre
+roca</a>.</p>
+<p class="ej"><b>Valores de ejemplo:</b> 150–300 mm para un panel de grabados de 1 m con trazos de 1–3 cm · 50–100 mm para
+marcas de cantero o grafitos finos en un sillar abombado · no para una lápida o un relieve (se perdería el volumen de
+las figuras).</p>
+
+<h3 id="p-negative">Molde (negativo)</h3>
+<p>Invierte las alturas: lo saliente pasa a estar hundido. Sirve para imprimir un molde para arcilla, yeso o silicona,
+o un sello. Normalmente conviene combinarlo con <i>Espejar</i>, para que la copia sacada del molde quede del derecho.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Actívalo solo para moldes o sellos; normalmente con marco y forma rectángulo.</p>
+<h3 id="p-base">Grosor de base</h3>
+<p class="def">mm de la pieza · por defecto 3</p>
+<p>Espesor macizo que se añade por debajo del punto más bajo del relieve (en modo objeto, solo con
+<a href="#p-ground">Abierto por abajo</a>). Con 2–3 mm basta para una pieza pequeña;
+para piezas grandes o que vayan a colgarse, usa 4–6 mm.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 3 mm en general · 2 mm para piezas pequeñas · 4–6 mm para placas que se cuelgan o moldes.</p>
+<h3 id="p-frame">Marco</h3>
+<p class="def">mm de la pieza · 0 = sin marco</p>
+<p>Añade alrededor de la pieza un borde de ese ancho, a la altura del percentil 98 del relieve, es decir, casi a ras
+de lo más saliente. Protege los bordes, da aspecto de placa y facilita colgarla o enmarcarla.
+El lado mayor final incluye el marco.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 0 · 5–10 mm para placas · 10 mm o más para la pared de un molde.</p>
+<h3 id="p-corner">Esquina (dos caras)</h3>
+<p class="def">Sí/no · por defecto no · solo tipo Bloque · pestaña Pieza</p>
+<p>Dos caras con relieve que se juntan en una arista, cada una con su propio mapa de alturas (consulta
+<a href="#esquina">Esquinas</a>). Sin esto, la segunda cara se trata como un lateral (solo Poisson). Con ella no cuenta
+<i>Profundidad máx.</i>: el bloque llega hasta donde llega la otra cara.</p>
+<p class="ej"><b>Valores de ejemplo:</b> sí para la esquina de un friso o un sillar con dos caras labradas · no para una
+cara con laterales cortos.</p>
+<h3 id="p-interior">Interior</h3>
+<p class="def">no / corte / negativo · tipo <i>Interior</i> · pestaña Pieza</p>
+<p>Para escaneos desde dentro (consulta <a href="#interior">Interiores</a>). <b>corte</b>: maqueta sin el techo, con la
+sala como un hueco dentro de un bloque. <b>negativo</b>: el volumen del hueco como un sólido.</p>
+<h3 id="p-ceiling">Altura del corte</h3>
+<p class="def">mm reales de la nube sobre el suelo · 0 = tres cuartos del alto · solo interior en corte</p>
+<p>Por dónde se quita el techo. Bájala para ver mejor la planta; súbela para conservar el arranque de la bóveda.</p>
+<h3 id="p-cut">Corte de la base</h3>
+<p class="def">Solo modo objeto · mm de la pieza · por defecto 1 · 0 = no cortar</p>
+<p>Corta el objeto por abajo a esta altura sobre su punto más bajo y lo cierra con una tapa plana, para que apoye en la cama.
+Un pie redondeado o un fondo sin escanear necesitan unos milímetros; un objeto que ya tiene una base plana, 0,5–1 mm.
+Sin corte, el objeto apoya en su punto más bajo y puede necesitar soportes. La altura final no incluye lo cortado.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 1 mm · 2–5 mm para pies redondeados o fondos mal escaneados · 0 si se imprime con soportes.</p>
+<h3 class="grupo">Pestaña Orientar</h3>
+<h3 id="p-up">Arriba (objeto)</h3>
+<p class="def">Solo modo objeto · z, -z, y, -y, x, -x · por defecto z</p>
+<p>Eje de la nube que quedará hacia arriba al imprimir. Con un signo menos, el objeto queda cabeza abajo respecto a ese eje.
+Míralo en la vista <i>Orientación</i>, que muestra el objeto de frente y de pie sobre la cama.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> z para la mayoría de escáneres · y para muchos modelos de fotogrametría.</p>
+<h3 id="p-view">Mirar desde</h3>
+<p class="def">Modos alturas, 3D y bloque · auto, arriba, frente, detrás, izquierda, derecha, abajo · por defecto auto ·
+pestaña Orientar</p>
+<p>Desde dónde se mira la cara del relieve. En <b>auto</b>, perpendicular al plano principal de la nube, que es lo
+normal en una lápida, un relieve o una inscripción. Las demás miran desde ese lado según los ejes de la nube
+(<i>frente</i> = desde −Y, <i>arriba</i> = desde +Z, <i>derecha</i> = desde +X…). Sirve cuando el plano principal no es
+la cara que quieres: en un escaneo aéreo de un edificio o de un acueducto el plano principal es el suelo, y con
+<i>frente</i> se saca la fachada o la arcada como placa en relieve. Conviene recortar antes en la vista de la nube lo
+que no sea esa fachada y subir la <a href="#p-behind">profundidad máxima</a> lo que mida el edificio de fondo. El
+resultado se ve en la pestaña <i>Orientación</i>; los giros, invertir y espejar funcionan igual.</p>
+<p class="ej"><b>Valores de ejemplo:</b> auto casi siempre · frente/detrás/izquierda/derecha para fachadas · arriba para
+una maqueta de terreno vista en planta.</p>
+<h3 id="p-plane">Plano de la cara</h3>
+<p class="def">nube / cara / puntos · por defecto nube · solo con <a href="#p-view">Mirar desde</a> auto · pestaña
+Orientar</p>
+<p>Cómo se busca el plano de la cara, que decide desde dónde se mira (la pieza se mira perpendicular a él):</p>
+<ul>
+  <li><b>nube</b>: el plano medio de toda la nube (lo normal);</li>
+  <li><b>cara</b>: solo la cara frontal. Se arranca del plano con más puntos (RANSAC) y se afina sin contar lo que se
+      separa de él, de modo que los laterales de un bloque, una rotura grande o una peana no lo tuercen (en las pruebas,
+      con una peana inclinada, el plano pasa de 10° de error a 0,1°);</li>
+  <li><b>puntos</b>: el plano por <b>tres puntos que marcas con clic</b> en la vista de la nube (enlace <i>Marcar 3 puntos
+      de la cara…</i> debajo del campo). Elige puntos separados del fondo de la cara, no en línea. Se ven en rosa y se
+      guardan con los ajustes.</li>
+</ul>
+<h3 id="p-behind">Profundidad máxima</h3>
+<p class="def">Unidades de la nube · por defecto 250</p>
+<p><b>Para elegir el valor</b>, debajo del campo (pestaña Orientación y paso Acabado del asistente) aparecen las medidas
+de la nube: tamaño de la cara, profundidad del relieve y hasta dónde llegan los puntos por detrás de la cara y por
+delante, y cuánto mide 1 unidad en la pieza. En modo bloque dice además el grosor que saldría con el valor actual y
+qué valor poner para algunos grosores (15, 20, 30 mm…).</p>
+<p>Se descartan los puntos que estén más de esta distancia por detrás del plano medio de la cara. Sirve para eliminar
+las caras superior, inferior y laterales del bloque, que en el escaneo aparecen detrás del relieve.
+<b>Bájalo</b> si en los bordes aparecen rampas o paredes. <b>Súbelo</b> si el relieve es muy profundo
+(más de 25 cm) y se recortan partes. Si deja fuera más del 5 % de los puntos, el registro lo avisa: con un
+terreno en pendiente o un edificio visto de frente, casi seguro que hay que subirla.</p>
+<p>En <a href="#bloque">modo bloque</a> hace lo contrario de descartar: es <b>hasta dónde llega el bloque</b> por detrás.
+Los laterales escaneados se conservan hasta esa profundidad y ahí se pone la trasera plana (o antes, si el escaneo
+no llega tan lejos).</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 250 para una cara de un bloque (en modo bloque: el grosor que quieras darle); 50–100 si se cuelan puntos de las caras laterales; 1000 o más si el relieve es muy profundo.</p>
+<h3 id="p-flip">Invertir cara frontal</h3>
+<p>El programa decide qué lado es el frente fijándose en que las caras laterales del bloque se alejan hacia atrás.
+Si la nube no tiene esas caras o son muy cortas, puede equivocarse: verás el relieve hundido o un reborde alto alrededor.
+En ese caso, marca esta opción.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Actívalo solo si el relieve sale hundido o con un reborde alto alrededor.</p>
+<h3 id="p-mirror">Espejar</h3>
+<p>Invierte izquierda y derecha. Úsalo si las letras salen al revés, o para preparar un sello o un tampón, que deben estar invertidos.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Actívalo si el texto se lee al revés, o para un sello que deba dejar el texto al derecho.</p>
+<h3 id="p-auto_straighten">Enderezar automáticamente</h3>
+<p>Calcula el rectángulo de área mínima que contiene el contorno y gira la pieza para alinearlo con los ejes, con un giro
+de entre −45° y +45°. Viene bien si el escaneo está algo torcido y quieres una placa recta o un marco rectangular.
+El giro aplicado se muestra en el registro.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Activado casi siempre; desactívalo si la pieza tiene forma irregular y prefieres el giro manual.</p>
+<h3 id="p-angle">Giro</h3>
+<p class="def">Grados, antihorario · por defecto 0</p>
+<p>Giro en el plano del relieve. Si <i>Enderezar automáticamente</i> está activado, se suma a ese giro; las herramientas
+de <a href="#orientar">cuadrar el giro</a> lo desactivan y escriben aquí el giro total. Pon 180 si la pieza sale cabeza abajo.
+Se ajusta en pasos de 0,5° con las flechas y admite centésimas.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 0 · 90 · 180 (cabeza abajo) · ±0,5–5 para corregir a mano; mejor la línea de referencia de la vista <i>Orientación</i>.</p>
+<h3 class="grupo">Pestaña Acabados</h3>
+<h3 id="p-wall">Hueca: pared</h3>
+<p class="def">mm de la pieza · por defecto «maciza» (0)</p>
+<p>Vacía la pieza por dentro dejando una pared de este grosor. El hueco se calcula como la superficie que queda a esa
+distancia por dentro de la exterior, así que sigue la forma (también dentro de las asas o de un relieve grueso); donde
+la pieza es más fina que dos paredes, queda maciza. En <b>filamento</b> normalmente no hace falta: el laminador ya
+imprime solo las paredes y un relleno ligero. En <b>resina</b> ahorra mucho material y peso, pero necesita
+<a href="#p-drain">agujeros de drenaje</a>. Con la vasija de ejemplo a 200 mm y 2 mm de pared, el volumen pasa de 1572 a 187 cm³.</p>
+<p class="ej"><b>Valores de ejemplo:</b> 2–3 mm en resina · 1,5 mm en piezas pequeñas · maciza en filamento.</p>
+<h3 id="p-drain">Agujeros de drenaje</h3>
+<p class="def">Diámetro en mm · por defecto sin agujeros · solo si la pieza es hueca</p>
+<p>Dos agujeros verticales desde la base hasta el suelo del hueco, en las zonas más amplias de ese suelo y lo más
+separados posible: por uno sale la resina líquida al lavar y por el otro entra el aire (con uno solo hace ventosa).
+Si el suelo del hueco es demasiado estrecho, el registro avisa y no se hacen.</p>
+<p class="ej"><b>Valores de ejemplo:</b> 3–5 mm en resina · sin agujeros en filamento.</p>
+<h3 id="p-label">Rótulo en la base</h3>
+<p class="def">Texto · por defecto vacío (sin rótulo) · <code>|</code> separa líneas</p>
+<p>Graba un texto en la cara de apoyo de la pieza: sigla de inventario, «Réplica 1:5», institución, fecha… Habitual en
+réplicas de museo para distinguirlas del original. Va en espejo, para que se lea al mirar la base por debajo, en la
+zona más amplia de la base y sin pisar los agujeros de drenaje. La profundidad es de unas 3 capas (0,6 mm con capa de
+0,2), y menos de la mitad de la pared si la pieza es hueca. Si no cabe, el registro lo dice: acorta el texto o baja la
+<a href="#p-label_size">altura del texto</a>. Necesita una base plana (modo objeto con corte de la base, o cualquier
+modo de relieve).</p>
+<p class="ej"><b>Valores de ejemplo:</b> <code>MAN 1234</code> · <code>Réplica 1:5|Museo de …|2026</code>.</p>
+<h3 id="p-label_size">Altura del texto</h3>
+<p class="def">mm · por defecto automática</p>
+<p>Altura de las letras del rótulo. Automática: la mayor que quepa en la base, entre 8 y 2 mm. Por debajo de 3 mm en
+filamento con boquilla de 0,4 las letras se empastan.</p>
+<h3 class="grupo">Pestaña Avanzado</h3>
+<p class="def">Lo normal es no tocarlos: se calculan solos a partir de la impresora y del escaneo.</p>
+<h4 class="grupo">Impresora</h4>
+<h3 id="p-nozzle">Boquilla</h3>
+<p class="def">mm · por defecto 0,4</p>
+<p>Diámetro de la boquilla de la impresora. Una impresora FDM no reproduce detalles horizontales menores que
+aproximadamente <b>media boquilla</b> (0,2 mm con 0,4). Por eso, con <i>Resolución</i> automática, la celda de la pieza
+será de media boquilla, salvo que el escaneo no dé para tanto. Con boquilla de 0,25 mm el detalle mejora, pero
+el fichero tiene unas 2,5 veces más triángulos y la impresión tarda bastante más. Para resina pon el tamaño de píxel del
+equipo (0,03–0,05 mm).</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 0,4 (lo normal) · 0,25 para letras e inscripciones · 0,6 para piezas grandes y rápidas · 0,05 en resina.</p>
+<h3 id="p-layer">Altura de capa</h3>
+<p class="def">mm · por defecto 0,2</p>
+<p>La que vas a usar en el laminador. Sirve para dos cosas: calcular la <a href="#p-quality">tolerancia</a> de la
+simplificación (el detalle vertical más fino que se imprime es una capa) y contar <b>cuántas capas ocupa el relieve</b>.
+Si son menos de 10, el relieve se verá escalonado y plano.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 0,2 en general · 0,1–0,12 para relieves finos · 0,28–0,3 para piezas grandes.</p>
+<h3 id="p-bed_x">Cama: ancho y fondo</h3>
+<p class="def">mm · por defecto 220 × 220 · 0 = no comprobar</p>
+<p>Tamaño útil de la cama. Solo se usa para avisar si la pieza no cabe (se prueba también girada 90°).
+Si no cabe, reduce el <i>Lado mayor final</i> o imprímela de canto.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> {{IMPRESORAS}}.</p>
+<p><b>Tus impresoras.</b> En el <a href="#asistente">asistente</a>, la lista de impresoras incluye las que ya tienes
+configuradas en tus laminadores (OrcaSlicer, Bambu Studio, PrusaSlicer, SuperSlicer y Cura): se leen sus perfiles, sin
+modificarlos, y al elegir una se copian su cama, su boquilla y su capa. En OrcaSlicer y Bambu Studio se siguen los perfiles
+heredados («inherits») hasta encontrar la cama. Con <i>Guardar como mía…</i> puedes guardar cualquier combinación de cama,
+boquilla y capa con un nombre; se guarda en <code>~/.config/nube2stl/impresoras.json</code> y aparece la primera de la
+lista.</p>
+<h3 id="p-quality">Calidad</h3>
+<p class="def">normal · alta · máxima · por defecto alta</p>
+<p>Fija la <b>tolerancia</b> de la simplificación automática, es decir, cuánto puede separarse la malla simplificada de la
+original:</p>
+<table>
+<tr><th>Calidad</th><th>Tolerancia</th><th>Con boquilla 0,4 y capa 0,2</th></tr>
+<tr><td>normal</td><td>½ · mín(boquilla, capa)</td><td>0,10 mm</td></tr>
+<tr><td>alta</td><td>¼ · mín(boquilla, capa)</td><td>0,05 mm</td></tr>
+<tr><td>máxima</td><td>⅛ · mín(boquilla, capa)</td><td>0,025 mm</td></tr>
+</table>
+<p>La simplificación se para cuando el error del 99 % de la superficie supera la tolerancia o el del 99,9 % supera el
+doble. Así los pocos puntos con error grande (picos de ruido aislados) no se pasan por alto.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> alta en casi todo · normal para pruebas rápidas o boquillas gruesas · máxima para letras y capa de 0,1.</p>
+<h4 class="grupo">Malla</h4>
+<h3 id="p-res">Resolución</h3>
+<p class="def">Unidades de la nube por celda · por defecto «automática»</p>
+<p>Lado de cada celda del mapa de alturas. Es el parámetro que más influye en el detalle y en el tamaño del fichero.
+El número de triángulos crece con 1/res²: si la reduces a la mitad, hay cuatro veces más triángulos.</p>
+<ul>
+  <li><b>Límite por el escaneo.</b> Por debajo de la separación media entre puntos, muchas celdas quedan vacías y se
+      rellenan por interpolación, sin ganar detalle real. Lo razonable es dejar unos 4 puntos por celda.</li>
+  <li><b>Límite por la impresora.</b> <code>boquilla ÷ (2 × escala)</code>: más fino no se imprime.</li>
+</ul>
+<p>En «automática» se usa la mayor de las dos, redondeada; el recuadro de la pestaña <i>Tamaño</i> indica cuál limita.
+Con las piedras de ejemplo, a 200 mm y boquilla de 0,4 mm, salen 3,5 (lateral1), 2,2 (lateral2) y 1,2 (lateral3):
+siempre limita la boquilla. En el modo 3D, la profundidad de Poisson automática se ajusta a esta resolución.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Automática. A mano: 1–2 mm para piedras de 1 m a 200 mm; 0,2–0,5 para objetos pequeños escaneados de cerca.</p>
+<h3 id="p-simplify">Simplificar</h3>
+<p class="def">% de triángulos a conservar · por defecto «automático» · 100 = sin simplificar</p>
+<p>En «automático» se prueba con el 25 %, el 12,5 %, el 6 %… y se queda con la última que cumple la tolerancia de la
+<a href="#p-quality">calidad</a>. Así el fichero es lo más pequeño posible sin perder nada que la impresora pueda
+reproducir.</p>
+<p>Simplificación adaptativa por colapso de aristas con métrica cuádrica: se eliminan triángulos donde la superficie es plana
+(base, paredes, fondos lisos) y se conservan donde hay detalle. Se conservan siempre el contorno, la topología y la orientación
+de las caras, y después se comprueba que la malla sigue cerrada; si no lo estuviera, se descarta la simplificación y se avisa.
+El programa mide el error (distancia de Hausdorff de la malla original a la simplificada) y lo muestra en mm de la pieza.
+Valores medidos con <code>lateral3</code> a 200 mm: con un 10 %, error medio de 0,009 mm y máximo de 0,23 mm; con un 3 %,
+0,019 mm de media y 0,44 mm de máximo. Como referencia, una boquilla de 0,4 mm no reproduce nada por debajo de unos 0,2 mm.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Automático · 100 para no simplificar (comparar o editar después) · 10–25 % para fijar un tamaño.</p>
+<h3 id="p-poisson_depth">Profundidad Poisson</h3>
+<p class="def">Solo modos 3d, bloque y objeto · 0 = automática</p>
+<p>Número de niveles del octree de Poisson; el detalle mínimo es aproximadamente <code>tamaño de la pieza ÷ 2<sup>profundidad</sup></code>.
+En modo automático se elige para que coincida con la resolución, con un máximo de 11. Cada nivel adicional duplica el detalle
+y multiplica la memoria por 3 o 4. Referencias medidas: <code>lateral3</code> (1,3 m, profundidad 10) tarda 36 s y usa 3 GB;
+<code>lateral2</code> (2,3 m, profundidad 11) tarda 2 min y usa 8,7 GB. Si el programa se cierra por falta de memoria, baja
+la profundidad (9 o 10) o aumenta la resolución.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Automática · 9–10 para pruebas rápidas · 11 o más solo con 16 GB de memoria.</p>
+<h3 id="p-front_pct">Percentil del frente</h3>
+<p class="def">% · por defecto 90</p>
+<p>Cada celda contiene varios puntos a distintas profundidades. Este valor indica cuál se toma: 100 es el más
+saliente, 50 la mediana. Con 90 se toma la superficie frontal ignorando los puntos sueltos que flotan delante.
+<b>Bájalo</b> (70–80) si el escaneo tiene mucho ruido delante de la superficie. <b>Súbelo</b> (95–100) si es muy limpio
+y quieres conservar las aristas más vivas.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 90 en general · 100 si el escaneo es muy limpio · 70–80 si es ruidoso.</p>
+<h3 id="p-min_pts">Puntos mínimos por celda</h3>
+<p class="def">Por defecto 2</p>
+<p>Número de puntos que necesita una celda para contar como parte de la pieza al calcular el contorno.
+<b>Súbelo</b> si el contorno incluye «barbas» de puntos sueltos alrededor.
+<b>Bájalo</b> a 1 si la nube es poco densa y el contorno sale lleno de mordiscos.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 2 en general · 4–6 para quitar flecos del contorno en escaneos densos.</p>
+<h3 id="p-fill">Relleno de huecos</h3>
+<p>Qué se hace con las celdas sin datos dentro de la pieza: sombras del escáner, cavidades profundas o zonas brillantes.</p>
+<ul>
+  <li><b>Vecino:</b> copia la altura del dato más cercano. Es rápido, pero deja escalones en los huecos grandes.</li>
+  <li><b>Interpolado:</b> interpola linealmente desde el borde del hueco. Las superficies quedan más suaves.</li>
+  <li><b>Suave:</b> en cada hueco, la superficie más suave que empalma con el borde en altura <i>y en pendiente</i>
+      (biarmónica). Continúa las curvas de una moldura, de un fuste o de una roca en vez de tender planos: en las
+      pruebas, con un hueco de 10 × 7 cm en una superficie ondulada, el error baja de 0,8 mm (interpolado) a 0,1 mm.
+      Algo más lento en huecos muy grandes.</li>
+</ul>
+<p>El registro indica qué porcentaje de la pieza se ha rellenado. Si pasa del 10 %, conviene aumentar la resolución.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> vecino en general · suave si hay huecos en superficies curvas (molduras,
+rocas) · interpolado en zonas planas.</p>
+<p id="avanzado-cambiados" class="nota"><b>Valores de Avanzado cambiados.</b> Los campos de Malla y de Limpieza y
+suavizado cuentan aunque no se vean. Si alguno tiene un valor distinto del de por defecto (por unos ajustes cargados, el
+asistente o un cambio olvidado), debajo de las pestañas aparece una línea que los nombra, con enlaces para
+<i>verlos</i> o <i>dejarlos por defecto</i>.</p>
+<h3 id="p-workers">Procesadores</h3>
+<p class="def">0 = automático</p>
+<p>Cuántos procesadores usa la generación. Los pasos pesados se reparten así:</p>
+<ul>
+  <li><b>Ordenación de los puntos</b> en el mapa de alturas: en hilos, por bandas de la rejilla.</li>
+  <li><b>Simplificación:</b> la malla se trocea en franjas que se simplifican en procesos paralelos, conservando intactos los
+      vértices de los cortes, y después se cosen y se comprueba que la malla sigue cerrada.</li>
+  <li><b>Poisson</b> (modo 3D): en hilos.</li>
+</ul>
+<p>En modo automático se usan todos los procesadores lógicos para ordenar y simplificar, y solo los <b>núcleos físicos</b> para
+Poisson. Medido en este equipo (i7-1185G7, 4 núcleos y 8 hilos): la simplificación tarda 30,7 s con 1 proceso, 10,7 s con 4
+y 9,8 s con 8; Poisson tarda 60 s con 1 hilo, 27 s con 4 y 36 s con 8. Con Hyper-Threading, los hilos de más compiten por
+los mismos núcleos. Pon un número menor si quieres dejar el equipo libre para otras cosas mientras genera.</p>
+<p><b>Se adapta solo al equipo.</b> Al arrancar, el programa cuenta los procesadores que puede usar de verdad: en un
+equipo de 16 núcleos usará 16 (o 32 hilos), y en uno de 2 usará 2. También respeta los límites impuestos desde fuera,
+como <code>taskset</code>, un contenedor Docker con <code>--cpus</code> o un servidor de cálculo con cuota. La simplificación
+no reparte en franjas de menos de 150.000 triángulos, porque en mallas pequeñas trocear cuesta más de lo que ahorra.
+Los procesadores detectados se ven en la barra de estado y en <i>Acerca de → Sistema</i>.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> Automático · 2–4 si quieres seguir usando el ordenador mientras genera.</p>
+<h4 class="grupo">Limpieza y suavizado</h4>
+<h3 id="p-despike">Quitar picos</h3>
+<p class="def">Unidades de la nube · 0 = desactivado</p>
+<p>Compara cada celda con la mediana de su entorno (7×7 celdas). Las que se separan más de este umbral se consideran
+picos y se rellenan como huecos. Valores típicos: 5–20 mm. Si el umbral es demasiado bajo, se pierden aristas y detalles reales.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 0 (desactivado) en escaneos limpios · 2–5 mm con fotogrametría o puntos sueltos.</p>
+<h3 id="p-smooth">Suavizado (mediana)</h3>
+<p class="def">Celdas · por defecto 3</p>
+<p>Filtro de mediana de N×N celdas. Elimina el «grano» del escaneo sin redondear demasiado las aristas.
+0 o 1 lo desactivan; 5 o más empieza a borrar detalle fino.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 3 en general · 0–1 para letras finas · 5–7 para escaneos ruidosos.</p>
+<h3 id="p-gauss">Suavizado gaussiano</h3>
+<p class="def">Unidades de la nube (sigma) · 0 = desactivado</p>
+<p>Suavizado adicional, más uniforme que la mediana pero que sí redondea las aristas. Útil para superficies
+orgánicas o muy ruidosas; empieza con valores de 1–2 veces la resolución.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 0 en general · 0,5–2 (1–2 veces la resolución) para un acabado pulido · más redondea el relieve
+(salvo con <a href="#p-edges">Respetar las aristas</a>).</p>
+<h3 id="p-edges">Respetar las aristas</h3>
+<p class="def">Sí/no · por defecto no · solo con <a href="#p-gauss">Suavizado gaussiano</a></p>
+<p>Cambia el suavizado gaussiano por un <b>filtro guiado</b>: en las zonas lisas promedia como el gaussiano, pero donde la
+altura cambia mucho más que el ruido (el canto de una letra, el borde de una moldura) apenas toca nada. El ruido se mide
+en la propia nube. Quita el grano del escáner sin redondear las inscripciones: en las pruebas, con letras de 2 mm, deja
+la mitad de ruido que el gaussiano y redondea los cantos cuatro veces menos.</p>
+<p class="ej"><b>Valores de ejemplo:</b> sí con escaneos ruidosos de inscripciones, junto con un suavizado de 1–2 veces la
+resolución.</p>
+<h3 id="p-denoise">Alisado (3D)</h3>
+<p class="def">Radio en separaciones entre puntos del escaneo · por defecto 3 · solo modos bloque y objeto</p>
+<p>En los modos que trabajan con los puntos en 3D no hay mapa de alturas al que aplicar la mediana, y Poisson
+reproduce fielmente lo que recibe: también el ruido de medida del escáner (unas décimas de mm por punto). La
+forma sale bien, pero la superficie queda granulada, «martilleada», y se ve muy distinta del original con luz
+rasante. El alisado lleva cada punto, a lo largo de su normal, al plano medio de sus vecinos dentro de este radio
+(solo los del mismo lado de la superficie, para no mezclar las dos caras de una pared fina). No mueve los puntos a
+lo largo de la superficie, así que no encoge la pieza.</p>
+<p>El radio se mide en la separación entre los puntos del escaneo (no en la resolución de trabajo), porque el
+ruido está a esa escala. Cuando la resolución la limita la impresora, cada celda ya promedia muchos puntos del
+escaneo y el alisado apenas actúa (el registro dice «no hace falta»).</p>
+<p>Con la vasija sintética (ruido de 0,15 mm) el error de las normales de la superficie baja de 4,5° a 1,3° de
+mediana y la forma no cambia (error medio frente a la superficie exacta 0,03 mm en la pieza). Además, la malla lisa
+necesita la mitad de triángulos para la misma tolerancia.</p>
+<p class="ej"><b>Valores de ejemplo:</b> 3 en general · 4–6 para fotogrametría o escaneos ruidosos (redondea
+aristas y detalles más finos que el radio) · no (0) para calcar los puntos tal cual.</p>
+<h3 id="p-floor_pct">Recorte del fondo</h3>
+<p class="def">% · por defecto 5</p>
+<p>Las alturas por debajo de este percentil se igualan a él. En los bordes del escaneo, las caras del bloque que se
+alejan hacia atrás producen rampas muy profundas que obligan a hacer una base muy gruesa. Este recorte las aplana y
+<b>reduce mucho el grosor y el material</b>. En los ficheros de ejemplo, el 5 % deja intacto el relieve.
+Si ves que se aplanan zonas hundidas que forman parte del relieve, bájalo.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 5 en general · 0 si el contorno es limpio · 10–20 si la base sale muy gruesa (mira el corte en <a href="#ejemplos">Ejemplos</a>).</p>
+<h3 id="p-erode">Recortar borde</h3>
+<p class="def">Unidades de la nube · 0 = desactivado</p>
+<p>Encoge el contorno de la pieza esa distancia hacia dentro. Sirve para eliminar el borde irregular de las aristas
+del bloque, que suele ser la parte peor escaneada.</p>
+
+<p class="ej"><b>Valores de ejemplo:</b> 0 · 5–20 mm de la piedra para quitar un borde roto o con flecos.</p>
+<h3 id="memoria">Memoria: aviso antes de generar</h3>
+<p>Antes de cada generación, el programa estima cuánta memoria va a necesitar y la compara con la que hay libre en
+ese momento. Si va justa (más del 65 % de la libre) o no cabe (más del 90 %), aparece una ventana que hay que aceptar
+con:</p>
+<ul>
+  <li>una barra con la memoria prevista frente a la disponible;</li>
+  <li>los <b>parámetros que bajan el consumo</b>, con el mismo control que en las pestañas, su valor actual y un botón
+      con el valor sugerido (el más cercano al actual que deja margen): <i>Resolución</i>, <i>Lado mayor final</i> y
+      <i>Boquilla</i>; en modo 3D, además, <i>Método</i> y <i>Profundidad Poisson</i>;</li>
+  <li>la estimación recalculada al momento mientras cambias valores.</li>
+</ul>
+<p><i>Aplicar y generar</i> copia los cambios a las pestañas y genera; <i>Generar igualmente</i> sigue con los valores
+originales; <i>Cancelar</i> no genera. Si a pesar de todo el sistema corta la generación por falta de memoria, se abre
+la misma ventana para reintentar con valores más bajos. Por línea de comandos se escribe el aviso con las opciones
+sugeridas (por ejemplo <code>--res 2.0</code>).</p>
+<p>La estimación se basa en medidas reales con los ficheros de ejemplo (error de ±6 %):</p>
+<table>
+<tr><th>Caso</th><th>Medido</th><th>Estimado</th></tr>
+<tr><td>lateral2 (16,9 M puntos), alturas, 200 mm</td><td>2,4 GB</td><td>2,4 GB</td></tr>
+<tr><td>lateral2, alturas, 600 mm (11 M triángulos)</td><td>6,9 GB</td><td>6,9 GB</td></tr>
+<tr><td>lateral3 (3,2 M puntos), 3D, 100 mm, profundidad 9</td><td>1,9 GB</td><td>1,9 GB</td></tr>
+<tr><td>lateral3, 3D, 200 mm, profundidad 10</td><td>4,5 GB</td><td>4,5 GB</td></tr>
+<tr><td>lateral2, 3D, 200 mm, profundidad 10</td><td>4,6 GB</td><td>4,5 GB</td></tr>
+</table>
+<p>En el mapa de alturas: unos 1,1 GB fijos + 42 bytes por punto + 0,47 GB por millón de triángulos antes de
+simplificar. En modo 3D pesa sobre todo la profundidad de Poisson: cada nivel más multiplica el detalle por dos y la
+memoria por 1,6 o más (las profundidades 11 a 13 están extrapoladas).</p>
+
+<!-- ============================================================ -->
+<h2 id="salida">5. Formatos y archivos</h2>
+<table>
+  <tr><th>Formato</th><th>Para qué</th></tr>
+  <tr><td>STL binario</td><td>Imprimir. Es el más compatible. No guarda color. En la cabecera lleva la versión, el número
+      del registro y la escala.</td></tr>
+  <tr><td>3MF</td><td>Imprimir con los laminadores actuales (PrusaSlicer, Bambu Studio, OrcaSlicer, Cura). Lleva las
+      unidades dentro (milímetros: no hay dudas de escala como con el STL), ocupa unas 4 veces menos que el STL y guarda el
+      nombre, el número del registro, la escala y la nube de origen como metadatos. No guarda color.</td></tr>
+  <tr><td>STL ASCII</td><td>Solo si algún programa antiguo lo exige. Ocupa unas 4–5 veces más.</td></tr>
+  <tr><td>OBJ</td><td>Intercambio con programas de modelado (Blender, etc.). Guarda el color por vértice si la nube lo tenía.</td></tr>
+  <tr><td>PLY con color</td><td>Ver o compartir el modelo con el color original (MeshLab, CloudCompare, Blender), o para impresoras a color.
+      Es el más compacto.</td></tr>
+</table>
+<p><b>Ajustes (.json):</b> <i>Guardar ajustes</i> y <i>Cargar ajustes</i> guardan y recuperan todos los parámetros, para repetir
+la misma configuración con otras caras.</p>
+<p id="ficha"><b>Ficha PDF</b> (<i>Archivo &gt; Ficha PDF de la pieza</i>, o <code>--ficha</code> en la consola): una hoja con
+cuatro vistas de la pieza (frente, lado, planta y perspectiva), sus medidas, escala, volumen, si está cerrada, el error de la
+simplificación, la nube de origen (fichero, puntos, unidades, puntos sueltos quitados) y todos los parámetros, marcados los que
+no son los de por defecto. La segunda página es el <a href="#desviacion">mapa de desviación</a>. Siguen el registro de la
+generación y los ajustes en JSON, para poder repetir la pieza igual. Si la pieza está en el registro, lleva su número.</p>
+<h3 id="registro">Registro de piezas</h3>
+<p>Cada pieza que se guarda queda anotada con un número (<b>P-0001</b>, <b>P-0002</b>…) que también se graba dentro del fichero
+(cabecera del STL, metadatos del 3MF): aunque se renombre, se sabe de dónde salió. Se apunta la fecha, el ordenador, la nube de
+origen (con una huella para reconocerla aunque cambie de sitio o de nombre), las mallas guardadas, la ficha, las medidas, la
+escala, el método, el volumen y peso, la fidelidad al escaneo, el rótulo y <b>todos los ajustes</b>. Guardar la misma pieza en
+otro formato no crea otra entrada: se añade a la suya.</p>
+<p><i>Archivo &gt; Registro de piezas</i> (Ctrl+R) abre la lista con una miniatura de cada pieza:</p>
+<ul>
+  <li><b>Buscar</b> por cualquier palabra: número, nombre, nube, rótulo, notas, fecha (<code>2026-11</code>), método o escala.</li>
+  <li><b>Nombre y notas</b> se editan ahí mismo y se guardan solos (impresora, filamento, quién la pidió, dónde está…).</li>
+  <li><b>Repetir…</b> (o doble clic): abre la nube de origen con los mismos ajustes, lista para <i>Generar</i>. Si la nube se
+      ha movido, la busca o te pide dónde está, y avisa si no es exactamente la misma.</li>
+  <li><b>Usar sus ajustes</b>: copia los ajustes de esa pieza a la ventana sin cambiar de nube.</li>
+  <li><b>Abrir carpeta</b>, enlaces a las mallas y a la ficha, <b>Exportar CSV</b> (lo que se ve tras la búsqueda) y
+      <b>Quitar</b> (solo del registro: no borra ficheros).</li>
+</ul>
+<p>Cada pieza es un fichero <code>P-0001.json</code> (más su miniatura <code>.png</code>) en la carpeta del registro, por
+defecto <code>Documentos/nube2stl_registro</code>. Con <i>Cambiar carpeta…</i> se puede poner en una carpeta compartida o
+sincronizada (OneDrive, red): varios ordenadores ven y amplían el mismo registro sin pisarse, porque cada número se reserva
+creando su fichero. Junto a ellos se mantiene <code>registro.csv</code> para Excel o LibreOffice (es solo un índice: se rehace
+solo). La casilla <i>Anotar automáticamente</i> lo desactiva; en los lotes hay una casilla propia, y en la consola se pide con
+<code>--registro</code> (y <code>--nombre</code>).</p>
+<p id="lotes"><b>Procesar varios ficheros</b> (<i>Archivo</i>): elige varias nubes o una carpeta entera (todos los formatos
+admitidos), la carpeta de salida y el formato. Se generan una tras otra con los parámetros actuales, cada una con su malla
+y, si se pide, su ficha PDF; si está marcado, cada pieza se anota en el <a href="#registro">registro</a>. Al final queda <code>lote_resumen.csv</code> (se abre en Excel o LibreOffice) con las medidas,
+el volumen, si la malla está cerrada, el tiempo y el error de cada fichero; se va escribiendo tras cada uno, así que si se corta
+lo hecho queda anotado.</p>
+<p id="vista-previa"><b>Vista previa</b> (botón junto a <i>Generar</i>, Ctrl+P): genera con una resolución 3 veces más gruesa
+(unas 9 veces menos celdas o puntos), sin simplificar ni acabados, para comprobar deprisa la orientación, el tamaño, el
+corte de la base o el grosor del bloque. Con <code>lateral3</code> en modo bloque tarda unos segundos en lugar de dos
+minutos. No se puede guardar: pulsa <i>Generar</i> para la pieza definitiva.</p>
+
+<!-- ============================================================ -->
+<h2 id="perdidas">6. Qué se pierde en la transformación</h2>
+<p>El método de mapa de alturas es robusto y siempre da una pieza imprimible, pero a cambio simplifica el objeto. Estas son
+las pérdidas, de mayor a menor importancia:</p>
+<ol>
+  <li><b>Socavados y voladizos (solo en el método «alturas»).</b> Cada punto del plano tiene una sola altura. Lo que queda «por debajo» de
+      otra parte, vista de frente, se rellena macizo: el hueco bajo un brazo despegado, el interior de una letra excavada en ángulo,
+      el espacio detrás de una bola en altorrelieve… Para relieves poco profundos (bajorrelieve) la pérdida es pequeña; en altorrelieves es notable.
+      <b>El método 3D evita esta pérdida</b> en la medida en que el escáner haya visto esas zonas: lo que no se escaneó
+      (el fondo de un hueco profundo) Poisson lo cierra con una superficie suave inventada.</li>
+  <li><b>El resto del objeto.</b> Solo se conserva una cara. Las caras superior, inferior y laterales del bloque se descartan,
+      y las caras escaneadas por separado no se unen entre sí.</li>
+  <li><b>Detalle menor que la celda.</b> Por la discretización, los detalles de tamaño inferior a unas 2 celdas se pierden o se
+      suavizan. Con 2 mm, todo lo que mida menos de unos 4 mm (grietas finas, marcas de cincel, textura de la piedra).
+      Al imprimir pequeño, la boquilla y la altura de capa imponen un límite aún mayor.</li>
+  <li><b>Suavizados.</b> El percentil, la mediana y el filtro gaussiano eliminan ruido, pero también redondean las aristas vivas.
+      El percentil 90 desplaza la superficie ligeramente hacia delante, en una cantidad del orden del ruido del escáner.</li>
+  <li><b>Huecos inventados.</b> Donde el escáner no vio nada (sombras, fondos de cavidades, zonas brillantes o mojadas),
+      la superficie se inventa por relleno o interpolación. El registro muestra cuánta superficie se ha rellenado.</li>
+  <li><b>Fondo recortado.</b> El recorte del fondo y la profundidad máxima aplanan las partes más hundidas. Con los valores por
+      defecto solo afectan a los bordes, pero con valores altos pueden aplanar zonas del relieve.</li>
+  <li><b>Contorno aproximado.</b> El contorno sigue la rejilla, en escalones del tamaño de la celda, y las operaciones
+      morfológicas (cerrar, abrir, rellenar huecos) lo alteran en unas pocas celdas.</li>
+  <li><b>Plano de referencia.</b> Si la cara no es plana (una columna, una superficie curva o alabeada), proyectarla sobre
+      un plano la deforma: las zonas inclinadas pierden resolución y lo curvo queda «aplastado» en la base.</li>
+  <li><b>Color.</b> El STL no guarda color. Se conserva, como color por vértice promediado por celda, solo en OBJ y PLY.</li>
+  <li><b>Simplificación.</b> Si la usas, introduce el error que muestra el panel (normalmente centésimas de mm).</li>
+  <li><b>Precisión numérica.</b> El STL usa coma flotante de 32 bits, lo que supone un error de micras: irrelevante.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="mejoras">7. Cómo se podría mejorar</h2>
+<h3>Con este mismo programa</h3>
+<ul>
+  <li>Usa la resolución más fina que permitan el escaneo y la impresora, con relleno <i>interpolado</i> (o <i>suave</i> en superficies curvas).</li>
+  <li>Prefiere <i>Quitar picos</i> con un umbral moderado antes que subir el suavizado: elimina los errores sin redondear todo.</li>
+  <li>Para relieves gastados, combina una exageración moderada (1,5×) con la iluminación rasante del laminador o de la vista previa.</li>
+  <li>Para letras o marcas casi borradas, usa <a href="#p-boost">Realzar lo pequeño</a> con los umbrales medidos en la
+      piedra, y ajústalo mirando la vista <a href="#detalle-pieza">Detalle de la pieza</a> con <i>Capas</i>.</li>
+</ul>
+<h3>Mejoras ya incorporadas</h3>
+<ul>
+  <li><b>Reconstrucción 3D real (Poisson apantallado)</b>, con el <i>Método: 3d</i>. Conserva los socavados y da una pieza cerrada gracias
+      a la trasera y las paredes sintéticas.</li>
+  <li><b>Lectura directa de LAS/LAZ, E57, XYZ/PTS/CSV, OBJ y STL</b>, unidades y escala 1:N, limpieza al abrir,
+      vista previa rápida, pieza hueca con drenaje, rótulo en la base, ficha PDF, lotes con resumen y pruebas automáticas.</li>
+  <li><b>Mapa de desviación</b> respecto al escaneo, <b>vista de corte</b>, exportación a <b>3MF</b> y <b>registro de
+      piezas</b> con número grabado en cada fichero.</li>
+  <li><b>Alisado del ruido en 3D</b> (parámetro <i>Alisado (3D)</i>): los modos bloque y objeto ya no calcan el grano del escáner.</li>
+  <li><b>Laterales del bloque</b>, con el <i>Método: bloque</i>: conserva las caras vecinas que trae el escaneo de una cara.</li>
+  <li><b>Objetos completos</b>, con el <i>Método: objeto</i>: reconstrucción 3D de piezas escaneadas por todos los lados,
+      con normales orientadas por propagación y visibilidad, y base plana para imprimir de pie.</li>
+  <li><b>Recorte de la nube</b> en la propia vista, <b>terrenos y monumentos</b> abiertos por abajo, <b>fachadas</b> con
+      «Mirar desde» y botones <b>¿Qué has escaneado?</b> que dejan a la vista solo lo que cuenta.</li>
+  <li><b>Superficies curvas desenrolladas</b> (cilindro ajustado a la nube), <b>grabados sobre roca</b> sin la forma
+      general, <b>propuesta automática del tipo</b> al abrir, <b>barra de pasos</b>, <b>medir</b> en el visor y
+      <b>nubes de ejemplo</b> de cada tipo.</li>
+  <li><b><a href="#unir">Unir varias nubes</a></b> en una pieza: ya alineadas, por pares de puntos (con afinado ICP)
+      o de forma automática con solape, con la calidad medida y avisos de alineación dudosa.</li>
+  <li><b><a href="#dos-caras">Piezas de dos caras</a></b>, <b><a href="#revolucion">conos, vasijas abombadas y
+      fragmentos</a></b> (la vasija entera y su perfil en SVG), <b><a href="#interior">interiores</a></b> en corte o en
+      negativo, <b><a href="#comparar">comparación de escaneos</a></b> (deterioro, con informe PDF) y
+      <b><a href="#lidar">LiDAR por clases</a></b>.</li>
+  <li><b><a href="#esquina">Esquinas</a>:</b> unir dos caras que solo comparten la arista («Por la arista») y la pieza
+      con un mapa de alturas por cara (<a href="#p-corner">Esquina (dos caras)</a>), propuesta al abrir la nube.</li>
+  <li><b><a href="#franja">La franja de la otra cara</a></b> al unir por la arista (ángulo medido y unión afinada) y
+      <b><a href="#p-boost">Realzar lo pequeño</a></b> (solo los detalles de poco relieve, sin tocar las formas
+      grandes).</li>
+  <li><b>Realce de lo pequeño en todos los tipos de pieza</b> (también sobre la malla de Poisson), medido respecto a
+      la mediana del entorno y con los umbrales <b>en mm de la piedra</b>; <a href="#detalle-pieza">Detalle de la
+      pieza</a> para verlo antes de generar; <a href="#guardar-union">guardar la unión</a> de varias nubes en un PLY o
+      en los ajustes; puntos de la arista en orden (abajo, arriba) para que la unión no se dé la vuelta.</li>
+  <li><b>Calidad:</b> relleno de huecos <a href="#p-fill">suave</a> (biarmónico), suavizado que
+      <a href="#p-edges">respeta las aristas</a>, <a href="#p-plane">plano de la cara</a> robusto o por tres puntos,
+      aviso de <a href="#avanzado-cambiados">valores de Avanzado cambiados</a> y la profundidad del grabado en la nota
+      de Orientar.</li>
+  <li><b>Simplificación adaptativa</b>, con <i>Simplificar</i>. Reduce los ficheros de 10 a 30 veces, con error medido y
+      comprobación de que la malla sigue cerrada.</li>
+</ul>
+
+<h3>Unir las caras de los laterales de ejemplo</h3>
+<p>Para reconstruir el bloque entero habría que alinear las nubes entre sí (<a href="#unir">Unir varias nubes</a>).
+Se probó un registro automático (características FPFH
++ RANSAC y después ICP con Open3D) entre los tres laterales de ejemplo: <b>no es posible con estos datos</b>. Los escaneos no comparten
+ninguna zona común; el algoritmo «encuentra» una alineación falsa superponiendo una cara plana sobre otra (coinciden el 17–28 %
+de los puntos, con errores de 6–10 mm), y además las tres caras miden 3,5 m, 2,3 m y 1,3 m de largo, por lo que no son las caras
+de un único bloque rectangular. Para unirlas haría falta una de estas cosas:</p>
+<ul>
+  <li>escaneos con <b>solape</b>: que cada uno incluya al menos 20–30 cm de las caras vecinas, incluidas las esquinas;</li>
+  <li><b>dianas o marcas</b> comunes visibles en varios escaneos, o un sistema de coordenadas común (estación total, GPS);</li>
+  <li>una <b>alineación manual</b> por pares de puntos homólogos (<a href="#unir">Por puntos</a>, en la ventana de
+      unir), si se conocen puntos comunes como las esquinas.</li>
+</ul>
+<p>Además, faltan la cara superior y el cuarto lateral, que habría que escanear o modelar para obtener un sólido completo.</p>
+
+<h3>Otras mejoras posibles</h3>
+<ul>
+  <li><b>Superresolución con fotografía:</b> añadir detalle fino a partir de fotos con luz rasante (estéreo fotométrico).</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="similares">8. Programas similares</h2>
+<p>Búsqueda en GitHub y otras fuentes (noviembre de 2026). No se ha encontrado ninguna herramienta específica para
+«relieve escaneado → STL imprimible» con interfaz gráfica; lo más parecido viene del mundo LiDAR o topografía
+(nube → modelo de elevación → STL) y de los conversores de imagen de alturas a STL.</p>
+<table>
+  <tr><th>Programa</th><th>Qué hace</th><th>Relación con nube2stl</th></tr>
+  <tr><td><a href="https://www.github.com/marian42/pointcloudprinter">marian42/pointcloudprinter</a></td>
+      <td>Prepara nubes LiDAR aéreas para impresión 3D: mapa de alturas simplificado y reconstrucción y exportación con MeshLab.</td>
+      <td>El más parecido en concepto (nube → alturas → STL), pero pensado para terreno y por línea de comandos.</td></tr>
+  <tr><td><a href="https://github.com/jawline/LAS-3d-printer">jawline/LAS-3d-printer</a></td>
+      <td>Muestrea una nube LAS en un mapa de alturas, interpola los huecos y genera un STL con base configurable.</td>
+      <td>Mismo método; para ficheros LAS de terreno.</td></tr>
+  <tr><td><a href="https://gitee.com/fengfeng043/las2stl">las2stl</a> (Gitee)</td>
+      <td>Script Python: nube LiDAR → malla imprimible, con escala horizontal y vertical (exageración) y altura de base.</td>
+      <td>Muy similar en parámetros.</td></tr>
+  <tr><td><a href="https://pypi.org/project/heightcraft/">heightcraft</a></td>
+      <td>Genera mapas de alturas de 32 bits a partir de LAS/LAZ y mallas, por bloques para ficheros grandes.</td>
+      <td>Solo el paso nube → mapa de alturas.</td></tr>
+  <tr><td><a href="https://github.com/fogleman/hmm">fogleman/hmm</a></td>
+      <td>Imagen de alturas → malla con triangulación adaptativa y error máximo controlado; exageración en Z.</td>
+      <td>Su triangulación adaptativa es la mejora propuesta para reducir el tamaño de los STL.</td></tr>
+  <tr><td><a href="https://github.com/anoved/hmstl">anoved/hmstl</a></td>
+      <td>Imagen de alturas en escala de grises → STL con paredes y base (cerrado).</td>
+      <td>Mismo cierre de malla, pero parte de una imagen, no de una nube.</td></tr>
+  <tr><td><a href="https://www.github.com/ChHarding/TouchTerrain_for_CAGEO">TouchTerrain</a></td>
+      <td>Modelos de elevación (DEM) → STL imprimible, con interfaz web.</td>
+      <td>Equivalente para topografía.</td></tr>
+  <tr><td><a href="https://github.com/Bigchx/mcp_3d_relief">Bigchx/mcp_3d_relief</a></td>
+      <td>Imagen → relieve STL con grosor, base y opción de profundidad invertida.</td>
+      <td>Equivale a nuestro modo molde, a partir de imágenes.</td></tr>
+  <tr><td><a href="https://cloudcompare.org/doc/wiki/index.php/PluginPoissonRecon">CloudCompare</a></td>
+      <td>Edición de nubes; herramienta <i>Rasterize</i> (2,5D, exporta ráster o malla) y plugin de Poisson.</td>
+      <td><i>Rasterize</i> hace algo parecido a nube2stl, pero sin cerrar la malla para imprimir.</td></tr>
+  <tr><td><a href="https://redirect.github.com/mkazhdan/PoissonRecon">mkazhdan/PoissonRecon</a></td>
+      <td>Implementación de referencia de la reconstrucción de Poisson (apantallada).</td>
+      <td>Base de la mejora «reconstrucción 3D real».</td></tr>
+  <tr><td><a href="https://github.com/isl-org/Open3D">Open3D</a> / <a href="https://github.com/cnr-isti-vclab/PyMeshLab">PyMeshLab</a></td>
+      <td>Bibliotecas Python con Poisson, <i>ball pivoting</i>, registro ICP y reparación de mallas.</td>
+      <td>Las piezas necesarias para la versión 3D completa.</td></tr>
+  <tr><td>MeshLab</td>
+      <td>Reconstrucción (Screened Poisson, Ball Pivoting), limpieza y simplificación de mallas.</td>
+      <td>Útil para simplificar los STL que genera nube2stl.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="cli">9. Línea de comandos</h2>
+<p>Sin interfaz gráfica, para procesar muchos ficheros o integrarlo en scripts:</p>
+<pre><code>python3 nube2stl.py --cli entrada.ply salida.stl                       # 200 mm, boquilla 0,4, todo automático
+python3 nube2stl.py --cli entrada.ply salida.stl --target_len 150 --nozzle 0.25 --layer 0.1 --quality maxima
+python3 nube2stl.py --cli entrada.ply salida.stl --mode 3d --bed_x 256 --bed_y 256
+python3 nube2stl.py --cli entrada.ply salida.stl --shape rectangulo --frame 8 --base 4
+python3 nube2stl.py --cli sillar.ply sillar.stl --mode bloque --behind 300
+python3 nube2stl.py --cli estatua.ply estatua.stl --mode objeto --up y --cut 2 --target_len 150
+python3 nube2stl.py --cli escaneo.e57 pieza.stl --ratio 5 --units m       # escala 1:5, nube en metros
+python3 nube2stl.py --cli vasija.obj vasija.stl --mode objeto --wall 2 --drain 4 --label "MAN 1234|1:2" --ficha vasija.pdf
+python3 nube2stl.py --cli estela.laz estela.3mf --ratio 10 --registro --nombre "Estela de Clunia"   # 3MF y al registro
+python3 nube2stl.py --cli acueducto.obj maqueta.stl --units m --mode objeto --ground true         # terreno o monumento
+python3 nube2stl.py --cli acueducto.obj fachada.stl --units m --view frente --behind 3000         # fachada en relieve
+python3 nube2stl.py --cli miliario.ply miliario.stl --surface cilindro --shape rectangulo --frame 6   # desenrollado
+python3 nube2stl.py --cli panel.ply grabado.stl --detrend 200 --z_scale 3                          # grabados sobre roca
+python3 nube2stl.py --cli tanda1.ply pieza.stl --unir tanda2.ply --unir base.ply   # nubes ya alineadas
+python3 nube2stl.py --cli esquina.ply esquina.stl --mode bloque --corner true                  # dos caras en ángulo
+python3 nube2stl.py --cli anverso.ply moneda.stl --reverso reverso.ply --base 1.5 --giro_reverso 180   # dos caras
+python3 nube2stl.py --cli fragmento.ply olla.stl --mode objeto --surface revolucion --perfil olla.svg  # vasija
+python3 nube2stl.py --cli vaso.ply banda.stl --surface cono                                    # cono desarrollado
+python3 nube2stl.py --cli cueva.ply maqueta.stl --mode objeto --interior corte --ceiling 1800   # interior en corte
+python3 nube2stl.py --cli vuelo.laz terreno.stl --units m --mode objeto --ground true --clases 2  # solo el suelo
+python3 comparar.py lapida_2020.ply lapida_2026.ply informe.pdf --umbral 0.5                   # deterioro
+python3 ejemplos.py ejemplos       # escribe las nubes de ejemplo en la carpeta «ejemplos»
+python3 nube2stl.py --version
+python3 nube2stl.py --cli entrada.ply salida.ply --ajustes mis_ajustes.json
+python3 nube2stl.py --cli --help      # lista todos los parámetros</code></pre>
+<p>Los nombres de los parámetros son los internos (<code>res</code>, <code>base</code>, <code>floor_pct</code>…), los mismos
+que aparecen en los ficheros de ajustes <code>.json</code>. Los tipos de la ventana equivalen a: Relieve =
+<code>--mode alturas</code> (o <code>3d</code> con socavados), Curvo = <code>--surface cilindro</code>, Grabado =
+<code>--detrend</code> con un tamaño en mm, Bloque = <code>--mode bloque</code>, Objeto =
+<code>--mode objeto</code> y Terreno = <code>--mode objeto --ground true</code>. Los <a href="#recorte">recortes</a>, las
+<a href="#unir">nubes unidas</a> que hubo que alinear y los grupos sueltos conservados no tienen opción propia: se pasan en un fichero de ajustes guardado desde la ventana
+(<code>--ajustes</code>).</p>
+
+<!-- ============================================================ -->
+<h2 id="requisitos">10. Requisitos</h2>
+<ul>
+  <li><b>Método «alturas»:</b> Python 3, NumPy, SciPy, PyQt5, Matplotlib y pyqtgraph (ya estaban instalados en el sistema).</li>
+  <li><b>Método «3d» y simplificación:</b> Open3D y PyMeshLab. Están instalados en el entorno virtual <code>.venv</code> de la carpeta
+      del programa, que usa además los paquetes del sistema. <code>nube2stl.py</code> se relanza automáticamente con ese entorno
+      si existe, así que basta con ejecutar <code>python3 nube2stl.py</code>. Para recrear el entorno:
+<pre><code>python3 -m venv --system-site-packages .venv
+.venv/bin/pip install open3d pymeshlab</code></pre></li>
+  <li><b>Formatos LAS/LAZ y E57:</b> <code>laspy</code>, <code>lazrs</code> y <code>pye57</code> (van en
+      <code>requisitos.txt</code>; sin ellos el resto funciona y al abrir esos ficheros se dice qué instalar).</li>
+  <li><b>Pruebas automáticas:</b> <code>.venv/bin/python pruebas.py</code> (menos de un minuto; <code>pruebas.py rapidas</code>,
+      unos segundos). Generan sus propios datos sintéticos y comprueban que las mallas salen cerradas y a la medida, la
+      fidelidad del modo objeto, los formatos, las unidades, la limpieza, el hueco, el rótulo, la ficha, el mapa de
+      desviación, el corte, el 3MF y el registro de piezas. Conviene pasarlas
+      tras cualquier cambio en el código.</li>
+  <li><b>Memoria:</b> el modo «alturas» necesita aproximadamente 1 GB por cada 10 millones de puntos; el modo 3D, de 3 a 9 GB
+      según la profundidad (consulta <a href="#p-poisson_depth">Profundidad Poisson</a>). Cierra otros programas pesados si vas a usarlo con nubes grandes.</li>
+</ul>
+
+<h3 id="github">Instalarlo desde GitHub</h3>
+<p>El programa se publica en GitHub, en <a href="{{REPO}}">{{REPO}}</a>.
+La forma más cómoda de instalarlo es con <b>git</b>, porque luego se actualiza solo. Hace falta Python 3.10, 3.11 o 3.12 y
+git (en Windows, <i>Git for Windows</i> de git-scm.com; en Ubuntu, <code>sudo apt install git python3-venv</code>):</p>
+<pre>git clone {{REPO}}.git
+cd nube2stl
+./instalar_linux.sh            (Windows: instalar_windows.bat)</pre>
+<p>Sin git también vale: en la página del repositorio, <i>Releases</i> › la última versión › <i>Source code (zip)</i>;
+se descomprime y se instala igual.</p>
+
+<h3 id="actualizar">Actualizar a una versión nueva</h3>
+<p>Al abrirse, nube2stl mira en GitHub (como mucho una vez al día, en segundo plano) si hay una versión publicada más nueva;
+si la hay, aparece <b>«Versión nueva: …»</b> a la derecha de la barra de estado. Se puede buscar a mano con
+<b>Ayuda › Buscar actualizaciones…</b>, que enseña las novedades y tiene el botón <b>Actualizar ahora</b>. Lo que hace
+depende de cómo esté instalado:</p>
+<ul>
+  <li><b>Con git</b> (<code>git clone</code>): <code>git pull</code>. Si has cambiado a mano algún fichero del programa no
+      actualiza, para no perder tus cambios, y te dice cuáles son.</li>
+  <li><b>Carpeta descomprimida de un .zip:</b> descarga la versión nueva y copia sus ficheros encima. Los que sustituye se
+      guardan antes en <code>.anterior/&lt;versión de antes&gt;</code>, por si hay que volver atrás.</li>
+  <li><b>Ejecutable:</b> no puede cambiarse a sí mismo; el botón abre la página de la versión para descargarla.</li>
+</ul>
+<p>En los dos primeros casos, si la versión nueva necesita otras librerías (<code>requisitos.txt</code> ha cambiado), las
+instala también. Los cambios se usan al volver a abrir el programa (botón <b>Reiniciar nube2stl</b>). Tus ajustes,
+impresoras y registro de piezas no se tocan. Desde la consola es lo mismo:</p>
+<pre>python3 consola.py --actualizar               (busca e instala)
+python3 consola.py --actualizar --comprobar   (solo dice si hay una nueva)
+git pull                                      (si lo instalaste con git)</pre>
+<p>A GitHub solo se le pregunta por la última versión; no se envía nada tuyo. La búsqueda al abrir se puede quitar en el
+mismo cuadro («Buscar al abrir el programa»).</p>
+
+<h3 id="otro-equipo">Instalarlo en otro ordenador</h3>
+<p>Copia la carpeta del programa <b>sin</b> la subcarpeta <code>.venv</code> (está ligada a este equipo) ni <code>dist</code>.
+Si te han pasado <code>nube2stl.zip</code>, descomprímelo. Hace falta Python 3.10, 3.11 o 3.12 (Open3D aún no existe para
+versiones más nuevas). Después, una sola vez:</p>
+<ul>
+  <li><b>Windows:</b> instala Python 3.12 desde python.org, haz doble clic en <code>instalar_windows.bat</code> y abre el programa
+      con <code>abrir_nube2stl.bat</code> (también puedes arrastrar un .ply encima).</li>
+  <li><b>Linux:</b> <code>./instalar_linux.sh</code> y luego <code>python3 nube2stl.py</code>.</li>
+</ul>
+<p>La instalación crea <code>.venv</code> dentro de la carpeta con las librerías de <code>requisitos.txt</code> (unos 2 GB;
+tarda unos minutos y necesita Internet). Tus impresoras guardadas no viajan con la carpeta; los ajustes guardados en .json sí.</p>
+
+<h3 id="ejecutable">Ejecutable para Windows (o Linux)</h3>
+<p>Para usar el programa en un equipo sin Python se puede construir un ejecutable con PyInstaller. Hay que hacerlo
+<b>en el mismo sistema</b> en el que se va a usar: el de Windows se construye en Windows.</p>
+<ol>
+  <li>Instala Python 3.12 (o 3.11) desde python.org, con el lanzador <code>py</code>.</li>
+  <li>Copia la carpeta del programa y haz doble clic en <code>construir_windows.bat</code>. La primera vez descarga las
+      librerías (unos 2 GB) y tarda varios minutos.</li>
+  <li>El resultado es la carpeta <code>dist\nube2stl</code>: <code>nube2stl.exe</code> abre la aplicación y
+      <code>nube2stl-consola.exe --cli entrada.ply salida.stl …</code> es la línea de comandos. Hay que repartir la
+      <b>carpeta entera</b> (por ejemplo, en un .zip): el .exe solo no funciona.</li>
+</ol>
+<p>Son dos ejecutables porque PyMeshLab trae su propia versión de Qt, que no puede convivir con la de la interfaz: la
+generación y la simplificación se hacen en procesos aparte con el de consola. Windows avisará la primera vez
+(«Windows protegió su PC») porque el ejecutable no está firmado: <i>Más información → Ejecutar de todos modos</i>.
+En Linux, <code>construir_linux.sh</code> hace lo mismo, aunque allí basta con ejecutar <code>python3 nube2stl.py</code>.</p>
+
+</body>
+</html>

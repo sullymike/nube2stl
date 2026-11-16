@@ -1,0 +1,33 @@
+# Al subir una etiqueta vX.Y.Z se publica la versión («release») con sus novedades, sacadas de version.py.
+# Es lo que encuentra Ayuda › Buscar actualizaciones en los equipos donde está instalado el programa.
+#   git tag v0.21.0 && git push origin v0.21.0
+name: publicar
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: La etiqueta coincide con version.py y sus novedades
+        run: |
+          python3 - <<'PY' > notas.md
+          import os, sys
+          sys.path.insert(0, '.')
+          import version
+          tag = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          if tag != version.__version__:
+              sys.exit(f'La etiqueta v{tag} no coincide con __version__ = {version.__version__} (version.py)')
+          for v, date, items in version.HISTORY:
+              if v == tag:
+                  print('\n'.join(f'- {x}' for x in items))
+                  break
+          PY
+          cat notas.md
+      - name: Publicar la versión
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "nube2stl $GITHUB_REF_NAME" --notes-file notas.md
