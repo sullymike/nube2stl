@@ -19,6 +19,8 @@ HISTORY = [
         'La reconstrucción se vigila mientras trabaja: si el equipo se queda sin memoria se para a tiempo (sin '
         'atascarlo) y el aviso dice en qué paso iba y cuánto gastaba; los ajustes del intento quedan en '
         'ultimo_fallo.json, en la carpeta de configuración',
+        'Asistente: las descripciones de dos líneas ya no se montan sobre la opción siguiente (la página se desplaza '
+        'si no cabe) y la ventana es más alta si la pantalla lo permite',
     ]),
     ('0.21.0', 'noviembre 2026', [
         'Ventana más despejada: los parámetros ocupan todo el alto (el fichero pasa a la derecha, cargar/guardar '

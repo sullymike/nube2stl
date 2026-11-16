@@ -11,7 +11,7 @@ import numpy as np
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFormLayout, QFrame, QHBoxLayout,
                              QInputDialog, QLabel, QLineEdit, QMessageBox,
-                             QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget)
+                             QPushButton, QRadioButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
 import impresoras
 import recetas
@@ -89,7 +89,8 @@ class Asistente(QDialog):
             main, make_widget, spec, plan_html, label, colors
         self.setWindowTitle('Asistente de nube2stl')
         self.setWindowModality(Qt.WindowModal)
-        self.resize(900, 720)
+        scr = self.screen().availableGeometry() if hasattr(self, 'screen') and self.screen() else None
+        self.resize(900, min(880, scr.height() - 60) if scr is not None else 720)   # que quepan los 8 tipos
         self.base = main.params()                 # valores de las pestañas al abrir (para el resumen)
         self.p = copy.copy(self.base)             # lo que va eligiendo el asistente
         self.reasons = {}                         # parámetro -> por qué cambia
@@ -255,9 +256,17 @@ class Asistente(QDialog):
         for key, _, _, _ in STEPS:
             page = QWidget()
             lay = QVBoxLayout(page)
-            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setContentsMargins(0, 0, 8, 0)
             self.pages[key] = lay
-            self.stack.addWidget(page)
+            # con desplazamiento: si la página no cabe, cada texto conserva su alto (sin esto Qt los aplastaba y
+            # la segunda línea de una descripción quedaba debajo de la opción siguiente)
+            sc = QScrollArea()
+            sc.setWidget(page)
+            sc.setWidgetResizable(True)
+            sc.setFrameShape(QFrame.NoFrame)
+            sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            sc.setStyleSheet('QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }')
+            self.stack.addWidget(sc)
         right.addWidget(self.stack, 1)
         foot = QHBoxLayout()
         self.btn_cancel = QPushButton('Cancelar')
