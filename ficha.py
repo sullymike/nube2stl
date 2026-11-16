@@ -190,7 +190,8 @@ def make_pdf(path, r, prm, source=None, log_text='', label_fn=None):
             _view(ax, Vc, F, _rot(az, el), tt)
         scale = (f'1:{1 / r.scale:.3g}' if r.scale < 1 else f'{r.scale:.3g}:1') if r.scale else '—'
         piece = [('Medidas', f'{sx:.1f} × {sy:.1f} × {sz:.1f} mm'),
-                 ('Escala', scale + (f' (fijada 1:{prm.ratio:g})' if prm.ratio > 0 else ' (por el lado mayor)')),
+                 ('Escala', scale + (' (copia a tamaño real)' if getattr(prm, 'target', '') == 'real' else
+                                    f' (fijada 1:{prm.ratio:g})' if prm.ratio > 0 else ' (por el lado mayor)')),
                  ('Método', r.mode),
                  ('Volumen', f'{r.volume / 1000:,.1f} cm³ · PLA ' + ('(hueca)' if r.hollow else 'macizo')
                   + f' ≈ {r.grams_pla:,.0f} g'),

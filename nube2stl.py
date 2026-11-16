@@ -67,7 +67,7 @@ from PyQt5.QtWidgets import (QAction, QApplication, QCheckBox, QComboBox, QDialo
                              QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
                              QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy,
                              QSpinBox, QSplashScreen, QStackedWidget, QStyle, QTabWidget, QTextBrowser,
-                             QLineEdit, QScrollArea, QToolButton, QButtonGroup, QDialogButtonBox,
+                             QLineEdit, QRadioButton, QScrollArea, QToolButton, QButtonGroup, QDialogButtonBox,
                              QVBoxLayout, QWidget)
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT  # noqa: E402
 from matplotlib.colors import LightSource, LinearSegmentedColormap  # noqa: E402
@@ -200,6 +200,10 @@ ADVANCED_NOTE = ('Lo normal es no tocar nada de aquí: la resolución y la simpl
 HELP_ANCHOR = {'bed_y': 'p-bed_x'}
 SPEC = [
     ('Tipo de pieza', [
+        ('target', 'Destino', 'c', dict(items=['imprimir', 'real']),
+         'imprimir: una réplica a escala para la impresora (tamaño, boquilla, capas, cama).\n'
+         'real: una copia digital a tamaño real, 1:1 (archivo, fresado, gran formato, medir): sin escala ni '
+         'impresora; el detalle y la simplificación van en mm reales.'),
         ('mode', 'Método', 'c', dict(items=['alturas', '3d', 'bloque', 'objeto']),
          'alturas: mapa de alturas (rápido, siempre cerrado). 3d: Poisson, conserva socavados (lento). '
          'bloque: la cara y los laterales escaneados del bloque. '
@@ -230,6 +234,12 @@ SPEC = [
          'Tamaño al que se imprimirá: el lado mayor de la pieza medirá esto. No cuenta si fijas la escala.'),
         ('ratio', 'Escala 1:', 'f', dict(lo=0, hi=100000, step=1, dec=2, special='según lado mayor'),
          'Escala exacta de la réplica (1:5, 1:10…; 1 = tamaño real). Si la fijas, manda sobre el lado mayor.'),
+        ('use', 'Uso', 'c', dict(items=['archivo', 'cnc', 'gran formato', 'medir']),
+         'Para qué es la copia a tamaño real (solo con el destino «Tamaño real»):\n'
+         'archivo: guardarla y verla (con color, en PLY u OBJ).\n'
+         'cnc: fresarla (STL, sin color).\n'
+         'gran formato: imprimirla por piezas (hay que trocearla en el laminador).\n'
+         'medir: lo más fiel posible (casi sin simplificar; ficheros grandes).'),
     ]),
     ('Pieza final', [
         ('interior', 'Interior', 'c', dict(items=['no', 'corte', 'negativo']),
@@ -292,9 +302,10 @@ SPEC = [
          'nube: el plano medio de toda la nube (lo normal).\n'
          'cara: solo la cara frontal, sin dejarse llevar por los laterales, una rotura grande o una peana.\n'
          'puntos: el plano por tres puntos que marcas con clic en la vista de la nube (enlace de debajo).'),
-        ('behind', 'Profundidad máx.', 'f', dict(lo=1, hi=100000, step=10, dec=0, suf='mm'),
+        ('behind', 'Profundidad máx.', 'f', dict(lo=0, hi=100000, step=10, dec=0, suf='mm', special='auto'),
          'Descarta puntos más atrás que esto respecto al plano medio (caras laterales del bloque). '
-         'En modo bloque, hasta dónde llega el bloque por detrás de la cara.'),
+         'En modo bloque, hasta dónde llega el bloque por detrás de la cara.\n'
+         'auto: 250 mm, o la cuarta parte del lado mayor de la cara si es más (una fachada grande).'),
         ('flip', 'Invertir cara frontal', 'b', {}, 'Si el relieve sale hundido o con un reborde alto alrededor.'),
         ('mirror', 'Espejar', 'b', {}, 'Invierte izquierda/derecha (letras al revés, sellos, moldes).'),
         ('auto_straighten', 'Enderezar automáticamente', 'b', {}, 'Gira la pieza para alinear su contorno con los ejes.'),
@@ -397,9 +408,47 @@ def make_widget(kind, opt, val, label):
     return w
 
 
+REAL_FORMAT = {'archivo': 'PLY u OBJ, con color', 'cnc': 'STL (sin color)', 'gran formato': '3MF o STL',
+               'medir': 'PLY u OBJ'}
+
+
+def _len_txt(mm):
+    return f'{mm / 1000:.2f} m' if mm >= 2000 else f'{mm / 10:.1f} cm' if mm >= 100 else f'{mm:.1f} mm'
+
+
+def plan_html_real(st, prm, pl):
+    """plan_html con el destino «Tamaño real»: medidas reales, detalle, hasta dónde llega Poisson y simplificación."""
+    sx, sy = pl['size']
+    h = pl['height']
+    why = {'escaneo': 'el del escaneo', 'manual': 'manual'}.get(pl['why'], pl['why'])
+    txt = (f'<b>Copia a tamaño real (1:1):</b> {_len_txt(sx)} × {_len_txt(sy)} × {_len_txt(h)}'
+           + (' (alto)' if pl.get('object') else '') + '<br>'
+           f'<b>Detalle:</b> celda de {pl["res"]:.3g} mm ({why}; el escaneo da {pl["res_scan"]:.3g} mm) · '
+           f'{pl["cells"] / 1e6:.1f} M celdas' + (' de superficie' if pl.get('object') else '') + '<br>')
+    warn = ''
+    if prm.mode in ('3d', 'objeto', 'bloque'):
+        depth, pc = relief.poisson_cell(st, prm, pl['res'])
+        txt += f'<b>Poisson:</b> profundidad {depth} → celda real ≈ {pc:.3g} mm<br>'
+        if pc > 1.5 * pl['res']:
+            warn += (f'<br><span style="color:{C["accent_dk"]}">⚠ Poisson llega a unos {pc:.3g} mm: pedir menos '
+                     f'resolución no da más detalle. Para más, sube «Profundidad Poisson» en Avanzado (cada nivel, '
+                     f'la mitad de celda y unas 4 veces más memoria).</span>')
+    if pl['res'] < 0.7 * pl['res_scan']:
+        warn += (f'<br><span style="color:{C["accent_dk"]}">⚠ Celda más fina que el escaneo ({pl["res_scan"]:.3g} '
+                 f'mm): no hay detalle real que ganar y el fichero crece.</span>')
+    use = getattr(prm, 'use', 'archivo')
+    txt += (f'<b>Simplificar:</b> error admisible {pl["tol"]:.3g} mm (uso «{use}») · formato: '
+            f'{REAL_FORMAT.get(use, "")}')
+    if use == 'gran formato':
+        warn += '<br>Para imprimirla hay que trocearla en el laminador (o en otro programa).'
+    return txt + warn
+
+
 def plan_html(st, prm):
     """Resumen del cálculo de impresión (lo usan la pestaña Tamaño y el asistente)."""
     pl = relief.print_plan(st, prm)
+    if relief.is_real(prm):
+        return plan_html_real(st, prm, pl)
     if pl.get('object'):
         return plan_html_object(pl, prm)
     sx, sy = pl['size']
@@ -463,6 +512,8 @@ ONLY_OBJECT = ('up', 'cut', 'ground', 'interior', 'ceiling')
 ONLY_POISSON = ('poisson_depth',)
 ONLY_POINTS = ('denoise',)             # modos que trabajan con los puntos en 3D (no con el mapa de alturas)
 ONLY_HEIGHTMAP = ('detrend',)
+REAL_OFF = ('target_len', 'ratio', 'nozzle', 'layer', 'bed_x', 'bed_y', 'quality', 'boost', 'boost_lo', 'boost_hi',
+            'boost_size')        # lo que no cuenta con el destino «Tamaño real»
 DISABLED = {'alturas': ONLY_OBJECT + ONLY_POISSON + ONLY_POINTS,
             '3d': ONLY_OBJECT + ONLY_POINTS + ONLY_HEIGHTMAP,
             'bloque': ONLY_OBJECT + ONLY_HEIGHTMAP + ('z_scale', 'negative', 'base', 'frame', 'shape'),
@@ -1659,6 +1710,7 @@ class MainWindow(QMainWindow):
         self.widgets['ratio'].valueChanged.connect(self._mode_enable)
         self.widgets['wall'].valueChanged.connect(self._mode_enable)
         self.widgets['units'].currentTextChanged.connect(self._reload_cloud)
+        self.widgets['target'].currentTextChanged.connect(self._target_changed)
         self.widgets['clean'].toggled.connect(self._toggle_clean)
         self.widgets['ground'].toggled.connect(self._mode_enable)
         self.widgets['detrend'].valueChanged.connect(self._mode_enable)
@@ -2097,6 +2149,10 @@ class MainWindow(QMainWindow):
             off.add('view')
         if self.widgets['boost'].value() <= 1:
             off.update(('boost_lo', 'boost_hi', 'boost_size'))
+        if self.widgets['target'].currentText() == 'real':      # copia 1:1: ni escala ni impresora ni realce
+            off.update(REAL_OFF)
+        else:
+            off.add('use')
         if mode != 'bloque':
             off.add('corner')
         elif self.widgets['corner'].isChecked():
@@ -2174,6 +2230,88 @@ class MainWindow(QMainWindow):
         self._adv_note()
 
     # ---------- tipo de pieza (selector de arriba: pone el método y «Abierto por abajo»)
+    def _target_changed(self, target):
+        """Destino Imprimir / Tamaño real: botones, parámetros que se ven y, al pasar a tamaño real a mano, base
+        proporcional y unidades confirmadas (a 1:1 un error de unidades es el resultado entero)."""
+        for k, b in getattr(self, 'target_btns', {}).items():
+            b.setChecked(k == target)
+        self._mode_enable()
+        self.update_plan()
+        if getattr(self, '_setting', False) or getattr(self, 'stats', None) is None:
+            return
+        w = self.widgets
+        L = max(self.stats['length'], self.stats['width'])
+        base = self._real_base(L)
+        if target == 'real':
+            if w['base'].value() == Params().base and base > Params().base:
+                w['base'].setValue(base)
+                self.say(f'Copia a tamaño real: base de {base:g} mm (proporcional a la pieza, de {L / 1000:.1f} m; '
+                         f'cámbiala en Pieza)')
+            self.say('Copia a tamaño real: escala 1:1, sin impresora ni realce; detalle y simplificación en mm reales')
+            if w['units'].currentText() == 'auto':
+                QTimer.singleShot(0, lambda: self.ask_units(force=True))
+        elif w['base'].value() == base and base > Params().base:
+            w['base'].setValue(Params().base)
+
+    @staticmethod
+    def _real_base(L):
+        """Grosor de base razonable a tamaño real: medio por ciento del lado mayor, entre 3 y 200 mm."""
+        return float(min(200, max(3, round(0.005 * L / 5) * 5)))
+
+    def ask_units(self, force=False):
+        """Unidades de la nube «auto» dudosas (o a tamaño real, siempre): cuadro con lo que mediría en cada una. Si
+        se elige otra, la nube se vuelve a leer con ella."""
+        li = getattr(self, 'load_info', None) or {}
+        if self.xyz is None or not li.get('guessed') or os.environ.get('NUBE2STL_NO_ASK'):
+            return
+        import entrada
+        ext = self.xyz.max(0) - self.xyz.min(0)
+        if li.get('units_ok') or (not force and not entrada.units_doubt(li, ext)):
+            return
+        raw = ext / li.get('factor', 1.0)              # lo que pone el fichero, sin unidades
+        dlg = QDialog(self)
+        dlg.setWindowTitle('Unidades de la nube')
+        lay = QVBoxLayout(dlg)
+        q = QLabel(f'El fichero no dice en qué unidades está. Sus números van de 0 a <b>{raw.max():.4g}</b>. '
+                   f'Elige cuánto mide de verdad:' if not force else
+                   f'Para una copia a tamaño real, las unidades tienen que ser seguras. El fichero no las dice: sus '
+                   f'números van de 0 a <b>{raw.max():.4g}</b>. Elige cuánto mide de verdad:')
+        q.setWordWrap(True)
+        lay.addWidget(q)
+        grp = QButtonGroup(dlg)
+
+        def fmt(mm):
+            return (f'{mm[0] / 1000:.3g} × {mm[1] / 1000:.3g} × {mm[2] / 1000:.3g} m' if mm.max() >= 2000 else
+                    f'{mm[0] / 10:.3g} × {mm[1] / 10:.3g} × {mm[2] / 10:.3g} cm' if mm.max() >= 100 else
+                    f'{mm[0]:.3g} × {mm[1]:.3g} × {mm[2]:.3g} mm')
+        rbs = {}
+        for u, f in entrada.UNITS.items():
+            rb = QRadioButton(f'{u}:  {fmt(raw * f)}')
+            rb.setChecked(u == li.get('units'))
+            grp.addButton(rb)
+            lay.addWidget(rb)
+            rbs[u] = rb
+        note = QLabel(f'Ahora se ha supuesto <b>{li.get("units")}</b>. Lo puedes cambiar después en Tamaño › '
+                      f'Unidades de la nube.')
+        note.setObjectName('muted')
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText('Usar estas unidades')
+        bb.button(QDialogButtonBox.Cancel).setText('Dejar las supuestas')
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        lay.addWidget(bb)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        u = next(k for k, rb in rbs.items() if rb.isChecked())
+        if u == li.get('units'):                     # las supuestas: confirmadas, sin releer la nube
+            self.say(f'Unidades confirmadas: {u}')
+            li['units_ok'] = True
+            self._file_card()
+        else:
+            self.widgets['units'].setCurrentText(u)  # se relee la nube con ellas
+
     def _kind_params(self):
         """Lo que decide el tipo de pieza (método, abierto por abajo, superficie, quitar forma), de los campos."""
         w = self.widgets
@@ -2186,6 +2324,25 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(box)
         v.setContentsMargins(0, 0, 0, 4)
         v.setSpacing(4)
+        dest = QHBoxLayout()                        # destino: réplica para imprimir o copia a tamaño real
+        dest.setSpacing(4)
+        self.target_btns = {}
+        dgrp = QButtonGroup(box)
+        for key, text, tip in (('imprimir', 'Imprimir una réplica', 'Réplica a escala para la impresora: tamaño, '
+                                'boquilla, capas y cama'),
+                               ('real', 'Copia a tamaño real', 'Copia digital 1:1 (archivo, fresado, gran formato, '
+                                'medir): sin escala ni impresora; detalle y simplificación en mm reales')):
+            b = QPushButton(text)
+            b.setObjectName('kind')
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setToolTip(tip)
+            b.setChecked(key == 'imprimir')
+            b.clicked.connect(lambda _=False, k=key: self.widgets['target'].setCurrentText(k))
+            dgrp.addButton(b)
+            dest.addWidget(b)
+            self.target_btns[key] = b
+        v.addLayout(dest)
         t = QLabel('<b>¿Qué has escaneado?</b>')
         head = QHBoxLayout()
         head.addWidget(t)
@@ -2953,17 +3110,8 @@ class MainWindow(QMainWindow):
          self.xyz_all, self.rgb_all) = out
         self.orient_undo = []
         self.result = None
-        ext = self.xyz.max(0) - self.xyz.min(0)
         QTimer.singleShot(60, lambda: self.fit_dock('fichero'))
-        self.lbl_file.setText(
-            f'<span style="font-size:11pt; font-weight:700; color:{C["navy"]}">{os.path.basename(self.path)}</span><br>'
-            f'{len(self.xyz):,} puntos · {"con color" if self.rgb is not None else "sin color"}<br>'
-            f'Extensión: {ext[0]:.0f} × {ext[1]:.0f} × {ext[2]:.0f} mm'
-            + self._units_note(ext)
-            + (' · <i>malla</i>' if self.load_info['kind'] == 'malla' else '')
-            + (f'<br>+ {len(self.merges)} nube{"s" if len(self.merges) > 1 else ""} unida{"s" if len(self.merges) > 1 else ""}'
-               f' ({self.load_info.get("n_main", 0):,} puntos de la principal)' if self.merges else '')
-            + self._clean_note())
+        self._file_card()
         self.lbl_tag.setText(os.path.basename(self.path))
         self._las_note()
         self._plane_note()
@@ -2991,6 +3139,8 @@ class MainWindow(QMainWindow):
             self.say(f'Por su forma, la nube parece: {next(k for k in recetas.KINDS if k["key"] == g[0])["short"]} '
                      f'({g[1]})')
             self._apply_guess()
+        if self.load_info.get('guess_new') and self.load_info.get('guessed'):     # unidades supuestas y dudosas
+            QTimer.singleShot(300, lambda: self.ask_units(force=self.widgets['target'].currentText() == 'real'))
 
     # ---------- orientación en tiempo real
     def _orient_tools(self, form):
@@ -3143,12 +3293,27 @@ class MainWindow(QMainWindow):
         self.wizard.finished.connect(lambda _: setattr(self, 'wizard', None))
         self.wizard.show()
 
+    def _file_card(self):
+        """Ficha del fichero (nombre, puntos, extensión, unidades, limpieza)."""
+        ext = self.xyz.max(0) - self.xyz.min(0)
+        self.lbl_file.setText(
+            f'<span style="font-size:11pt; font-weight:700; color:{C["navy"]}">{os.path.basename(self.path)}</span><br>'
+            f'{len(self.xyz):,} puntos · {"con color" if self.rgb is not None else "sin color"}<br>'
+            f'Extensión: {ext[0]:.0f} × {ext[1]:.0f} × {ext[2]:.0f} mm'
+            + self._units_note(ext)
+            + (' · <i>malla</i>' if self.load_info['kind'] == 'malla' else '')
+            + (f'<br>+ {len(self.merges)} nube{"s" if len(self.merges) > 1 else ""} unida{"s" if len(self.merges) > 1 else ""}'
+               f' ({self.load_info.get("n_main", 0):,} puntos de la principal)' if self.merges else '')
+            + self._clean_note())
+
     def _units_note(self, ext):
         """Unidades de la nube en la ficha del fichero; en naranja si se han supuesto y pueden estar mal."""
         li = self.load_info
         u = li['units']
         if not li.get('guessed'):
             return f' · unidades {u}' if u != 'mm' else ''
+        if li.get('units_ok'):
+            return f' · unidades {u} (confirmadas)'
         import entrada
         hint = entrada.units_hint(li, ext)
         if hint:
@@ -3267,6 +3432,7 @@ class MainWindow(QMainWindow):
             self.printer_lbl.setText(f'Impresora: boquilla {noz} mm · capa {lay} mm · {bed} · calidad '
                                      f'{w["quality"].currentText()} · <a href="#">cambiar</a> (pestaña Avanzado o '
                                      f'el asistente)')
+            self.printer_lbl.setVisible(w['target'].currentText() != 'real')
         st = getattr(self, 'stats', None)
         if st is None or not hasattr(self, 'plan_lbl'):
             return
@@ -3510,9 +3676,10 @@ class MainWindow(QMainWindow):
             vv, ff, _ = relief._mesh(np.where(msk, gs - base, 0.0), msk, r.cell * k, base)
             return vv, ff
 
-    def _ask_format(self, title, default_name):
+    def _ask_format(self, title, default_name, prefer=None):
         filt = ';;'.join(relief.FORMATS)
-        path, sel = QFileDialog.getSaveFileName(self, title, default_name, filt)
+        first = next((f for f, k in relief.FORMATS.items() if k == prefer), '')
+        path, sel = QFileDialog.getSaveFileName(self, title, default_name, filt, first)
         if not path:
             return None, None
         kind = relief.FORMATS.get(sel, 'stl')
@@ -3527,8 +3694,12 @@ class MainWindow(QMainWindow):
     def save_mesh(self):
         if self.result is None:
             return
-        base = os.path.splitext(self.path)[0] + '.stl' if self.path else 'relieve.stl'
-        path, kind = self._ask_format('Guardar malla', base)
+        prefer = 'stl'
+        if relief.is_real(self.last_prm):          # copia a tamaño real: el formato según el uso
+            prefer = {'cnc': 'stl', 'gran formato': '3mf'}.get(self.last_prm.use, 'ply')
+        stem = os.path.splitext(self.path)[0] if self.path else 'relieve'
+        base = stem + ('_1a1' if relief.is_real(self.last_prm) else '') + relief.EXT[prefer]
+        path, kind = self._ask_format('Guardar malla', base, prefer)
         if path:
             sz = relief.file_sizes(len(self.result.verts), len(self.result.tris), self.result.vcolors is not None)
             self.say(f'Tamaño estimado: {relief.fmt_bytes(sz[{"stl": "STL", "stla": "STL ASCII", "obj": "OBJ", "ply": "PLY", "3mf": "3MF"}[kind]])}')

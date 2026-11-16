@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.21.1'
+__version__ = '0.22.0'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,18 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.22.0', 'noviembre 2026', [
+        'Copia a tamaño real: dos botones arriba del panel Parámetros, «Imprimir una réplica» y «Copia a tamaño '
+        'real». La segunda hace una copia 1:1 para archivo, fresado, gran formato o medir: sin impresora ni realce, '
+        'detalle del escaneo en mm reales, simplificación según el uso (nuevo parámetro «Uso»), base proporcional, y '
+        'en Tamaño la medida real y hasta dónde llega Poisson. Al guardar propone el formato del uso',
+        'Asistente: empieza preguntando «¿Para qué es?»; la copia a tamaño real tiene su propio paso (unidades, uso '
+        'y detalle) en lugar de Impresora y Tamaño',
+        'Unidades dudosas: si las supuestas pueden estar mal (una malla de fotogrametría de 37 «mm», una pieza de '
+        'menos de 5 cm, algo tomado por metros), al abrir la nube se pregunta, diciendo cuánto mediría en cada unidad',
+        '«Profundidad máx.» automática (nuevo valor por defecto): 250 mm, o la cuarta parte del lado mayor de la cara '
+        'en piezas grandes. Con 250 fijos una fachada de 37 m perdía la mitad de la nube',
+    ]),
     ('0.21.1', 'noviembre 2026', [
         'Piezas enormes a escala real (un acueducto de 37 m): «Abierto por abajo» ya no llena la memoria. Sus paredes '
         'y su base no pasan del doble de los puntos de la nube (antes, con celda de 5 mm, 106 millones de puntos y '

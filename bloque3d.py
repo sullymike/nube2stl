@@ -49,7 +49,7 @@ def reconstruct_block(hm, prm, log=lambda s: None):
     col = hm.col[ok] / 255.0 if hm.col is not None else None
     nside = int((Z[ok] < hm.floor - 4 * res).sum())
     log(f'Modo bloque: {len(P):,} puntos; {nside:,} de los laterales (por debajo del fondo del relieve); '
-        f'el bloque llega a {front - zb:.0f} por detrás de la cara (límite: Profundidad máx. {prm.behind:g})')
+        f'el bloque llega a {front - zb:.0f} por detrás de la cara (límite: Profundidad máx. {getattr(relief._project, "behind", prm.behind):.0f})')
     pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(P))
     if col is not None:
         pc.colors = o3d.utility.Vector3dVector(col.astype(np.float64))

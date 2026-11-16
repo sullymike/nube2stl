@@ -26,7 +26,8 @@ def behind_html(st, prm):
     back, front = -st['h_q'][0], st['h_q'][1]
     depth = st.get('depth', 0.0)
     s = relief.piece_scale(prm, L)
-    B = prm.behind
+    B = relief.behind_mm(prm, max(L, W))
+    auto = ' (auto)' if prm.behind <= 0 else ''
     eng = ''
     if relief.uses_detrend(prm) and 'coarse' in st:      # grabado: lo que queda sin la forma de la roca
         try:
@@ -41,25 +42,35 @@ def behind_html(st, prm):
         txt += f' En la pieza ({prm.target_len:g} mm) 1 mm de la nube = {s:.3g} mm.'
     if prm.mode == 'bloque':
         thick = (min(B, back) + front) * s
-        txt += f'<br><b>Con {B:g} → bloque de ≈ {thick:.0f} mm</b> de grueso'
+        txt += f'<br><b>Con {B:.0f}{auto} → bloque de ≈ {thick:.0f} mm</b> de grueso'
         txt += ('' if B >= back else f'; todo el lateral: {np.ceil(back):.0f} (≈ {(back + front) * s:.0f} mm)') + '.'
         ex = [g for g in (10, 15, 20, 30, 40, 60) if front * s + 2 < g < (back + front) * s][:3]
         if ex:
             txt += ' Grosor → valor: ' + ' · '.join(f'{g} mm → {g / s - front:.0f}' for g in ex) + '.'
     elif B >= back:
-        txt += (f'<br><b>Con {B:g}</b> no se descarta nada. Si salen rampas o un reborde en el borde, bájalo a '
+        txt += (f'<br><b>Con {B:.0f}{auto}</b> no se descarta nada. Si salen rampas o un reborde en el borde, bájalo a '
                 f'algo más que el relieve, p. ej. {max(1.5 * depth, depth + 5):.0f}.')
     else:
-        txt += f'<br><b>Con {B:g}</b> se descartan los puntos más de {B:g} por detrás de la cara.'
+        txt += f'<br><b>Con {B:.0f}{auto}</b> se descartan los puntos más de {B:.0f} por detrás de la cara.'
     if prm.mode != 'bloque' and B < depth:
         txt += (f' <span style="color:#b03a2e">Es menos que el relieve (≈ {depth:.0f}): puede recortar los fondos '
                 f'del propio relieve.</span>')
     return txt
 
 
+def _len(mm, big=None):
+    """Longitud en m, cm o mm (según big, para que las tres medidas de una pieza vayan en la misma unidad)."""
+    big = mm if big is None else big
+    return f'{mm / 1000:.3g} m' if big >= 2000 else f'{mm / 10:.3g} cm' if big >= 100 else f'{mm:.3g} mm'
+
+
 STEPS = [('inicio', 'Nube de puntos', 'Empezamos',
           'El asistente te hace unas preguntas y rellena los parámetros por ti. No cambia nada hasta el final: '
           'entonces verás un resumen y podrás seguir retocando en las pestañas como siempre.'),
+         ('destino', 'Para qué', '¿Para qué es?',
+          'Una réplica para tu impresora (a escala, con su boquilla y su cama) o una copia digital a tamaño real '
+          '(para archivarla, fresarla, imprimirla por piezas en gran formato o medir). Las preguntas siguientes '
+          'cambian según lo que elijas.'),
          ('tipo', 'Qué es', '¿Qué has escaneado?',
           'Esto decide cómo se construye la pieza. Si dudas, mira la nube en la ventana principal (pestaña «Nube de '
           'puntos»): qué partes tienen puntos y cuáles no.'),
@@ -76,6 +87,9 @@ STEPS = [('inicio', 'Nube de puntos', 'Empezamos',
          ('tamano', 'Tamaño', '¿De qué tamaño la quieres?',
           'El tamaño decide la escala, si cabe en la cama y cuántas capas ocupará el relieve. El cálculo se '
           'actualiza al momento.'),
+         ('real', 'Tamaño real', 'Copia a tamaño real',
+          'A 1:1 no hay impresora que mande: las unidades tienen que ser seguras, el detalle es el del escaneo (en '
+          'mm reales) y la simplificación depende del uso.'),
          ('resumen', 'Resumen', 'Resumen',
           'Esto es lo que va a cambiar en las pestañas. Puedes volver atrás o aplicarlo; después podrás retocar '
           'cualquier valor a mano.')]
@@ -132,6 +146,11 @@ class Asistente(QDialog):
         return next(x for x in recetas.PURPOSES if x['key'] == self.purpose)
 
     def _visible(self, key):
+        real = relief.is_real(self.p)
+        if key in ('impresora', 'tamano'):
+            return not real
+        if key == 'real':
+            return real
         if key == 'objetivo':
             return len(recetas.purposes_of(self.kind)) > 1
         return key != 'acabado' or bool(self._purpose().get('ask'))
@@ -352,16 +371,117 @@ class Asistente(QDialog):
         lay.addSpacing(14)
         lay.addWidget(self._note(
             '<b>Qué vas a decidir</b><ol>'
+            '<li><b>Para qué:</b> una réplica para tu impresora o una copia a tamaño real.</li>'
             '<li><b>Qué has escaneado:</b> una cara en relieve, plana o sobre una columna; grabados sobre una '
             'roca; un bloque con sus laterales; un objeto por todos los lados, o un terreno o edificio.</li>'
             '<li><b>Qué quieres hacer:</b> copia, placa o molde; maqueta o fachada. Solo si hay donde elegir.</li>'
             '<li><b>Impresora:</b> filamento o resina, boquilla, capa y cama.</li>'
             '<li><b>Estado del escaneo:</b> letras finas, relieve gastado, ruido o partes que vuelan.</li>'
             '<li><b>Tamaño:</b> recuerdo, normal, exposición o a medida, con el cálculo de escala, cama y capas al '
-            'momento.</li></ol>'
+            'momento. En una copia a tamaño real, en vez de impresora y tamaño: unidades, uso y detalle.</li></ol>'
             'Las preguntas cambian según lo que elijas: por ejemplo, el marco solo se pregunta para placas y moldes, '
             'y la boquilla solo en impresoras de filamento.', 'wizIntro'))
         lay.addStretch(1)
+
+    def _page_destino(self, lay, forward):
+        grp = QButtonGroup(self)
+        opts = (('imprimir', 'Imprimir una réplica',
+                 'A escala, para tu impresora 3D: el tamaño, la boquilla, la capa y la cama deciden el detalle y la '
+                 'simplificación. Lo normal para piezas de museo, recuerdos o prácticas.'),
+                ('real', 'Copia a tamaño real (1:1)',
+                 'Sin reducir: para archivarla y verla, fresarla en CNC, imprimirla por piezas en gran formato o '
+                 'medir sobre ella. Sin impresora ni escala: el detalle y la simplificación van en mm reales. La '
+                 'malla sale cerrada (con base).'))
+        for key, title, desc in opts:
+            rb = QRadioButton(title)
+            rb.setObjectName('optTitle')
+            rb.setChecked(self.p.target == key)
+            rb.toggled.connect(lambda on, k=key: on and self._target(k))
+            grp.addButton(rb)
+            lay.addWidget(rb)
+            d = self._note(desc)
+            d.setContentsMargins(24, 0, 0, 8)
+            lay.addWidget(d)
+        if self.stats is not None:
+            L = max(self.stats['length'], self.stats['width'])
+            u = (getattr(self.main, 'load_info', None) or {}).get('units', 'mm')
+            lay.addWidget(self._note(f'<b>Tu nube</b> mide unos {_len(L)} de lado (unidades: {u}). Una pieza de más '
+                                     f'de 30–40 cm no cabe en casi ninguna impresora sin reducirla o trocearla.',
+                                     'plan'))
+        lay.addStretch(1)
+
+    def _target(self, key):
+        self._set('target', key, 'Elegido en «¿Para qué es?»')
+        self._refresh_side()
+
+    def _leave_destino(self):
+        if not relief.is_real(self.p) or self.stats is None:
+            return
+        base = self.main._real_base(max(self.stats['length'], self.stats['width']))
+        if self.p.base == Params().base and base > self.p.base:
+            self._set('base', base, 'Base proporcional a una pieza a tamaño real')
+
+    def _page_real(self, lay, forward):
+        why = 'Copia a tamaño real'
+        li = getattr(self.main, 'load_info', None) or {}
+        m = self.main
+        if m.xyz is not None:
+            import entrada
+            ext = m.xyz.max(0) - m.xyz.min(0)
+            raw = ext / li.get('factor', 1.0)
+            lay.addWidget(self._note('<b>1. Unidades de la nube</b>' + (
+                ' (el fichero no las dice: comprueba cuánto mide de verdad)' if li.get('guessed') else
+                f' (elegidas: {li.get("units")})'), 'optTitle'))
+            grp = QButtonGroup(self)
+            cur = self.p.units if self.p.units in entrada.UNITS else li.get('units', 'mm')
+            for u, f in entrada.UNITS.items():
+                mm = raw * f
+                b = float(mm.max())
+                rb = QRadioButton(f'{u}:  ' + ' × '.join(_len(x, b).split()[0] for x in mm) + ' ' + _len(b).split()[1])
+                rb.setChecked(u == cur)
+                rb.toggled.connect(lambda on, u=u: on and self._units(u))
+                grp.addButton(rb)
+                lay.addWidget(rb)
+            self.lbl_units = self._note('')
+            lay.addWidget(self.lbl_units)
+            lay.addSpacing(8)
+        lay.addWidget(self._note('<b>2. Para qué es</b>', 'optTitle'))
+        form = QFormLayout()
+        form.addRow(self.label('use'), self._param_widget('use', why, self._update_real))
+        form.addRow(self.label('res'), self._param_widget('res', why, self._update_real))
+        if self.p.mode not in ('objeto', 'bloque'):
+            form.addRow(self.label('base'), self._param_widget('base', why, self._update_real))
+        lay.addLayout(form)
+        lay.addWidget(self._note(
+            '<b>archivo</b>: con color (PLY u OBJ) · <b>cnc</b>: STL · <b>gran formato</b>: 3MF, a trocear en el '
+            'laminador · <b>medir</b>: casi sin simplificar. <b>Resolución</b> auto = la del escaneo; en los tipos 3D '
+            'Poisson pone su propio límite, que se ve debajo.'))
+        lay.addSpacing(6)
+        self.lbl_plan = self._note('', 'plan')
+        lay.addWidget(self.lbl_plan)
+        lay.addStretch(1)
+        self._update_real()
+
+    def _units(self, u):
+        li = getattr(self.main, 'load_info', None) or {}
+        if u == li.get('units') and self.base.units == 'auto':     # las supuestas: sin releer la nube
+            self._set('units', 'auto', 'Unidades confirmadas para el tamaño real')
+        else:
+            self._set('units', u, 'Unidades confirmadas para el tamaño real')
+        self._update_real()
+
+    def _update_real(self):
+        li = getattr(self.main, 'load_info', None) or {}
+        same = self.p.units in ('auto', li.get('units'))
+        if hasattr(self, 'lbl_units'):
+            self.lbl_units.setText('' if same else
+                                   f'<span style="color:{self.C["accent_dk"]}">Al aplicar, la nube se vuelve a leer '
+                                   f'en {self.p.units}; el cálculo de abajo aún es con {li.get("units")}.</span>')
+        if self.stats is None:
+            self.lbl_plan.setText('Abre una nube de puntos (primer paso) para ver la medida, el detalle y hasta dónde '
+                                  'llega Poisson.')
+            return
+        self.lbl_plan.setText(self.plan_html(self.stats, self.p))
 
     def _page_tipo(self, lay, forward):
         self.grp_kind = QButtonGroup(self)

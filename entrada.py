@@ -528,6 +528,16 @@ def crop_mask(xyz, crops):
     return keep
 
 
+def units_doubt(info, ext):
+    """¿Merece la pena preguntar las unidades supuestas? Tomada por metros (mide menos de 20), una pieza de menos de
+    50 mm, o una malla de fotogrametría de 20 a 5000 «mm» (suelen venir en metros: un acueducto de 37 m quedaba en
+    37 mm)."""
+    if not info.get('guessed'):
+        return False
+    big = float(max(ext))
+    return info.get('units') == 'm' or big < 50 or bool(units_hint(info, ext))
+
+
 def units_hint(info, ext):
     """Aviso si las unidades supuestas pueden estar mal: las mallas de fotogrametría (OBJ, PLY con caras…) suelen
     venir en metros aunque midan más de 20 de lado."""

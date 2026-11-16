@@ -1060,7 +1060,7 @@ class Coherencia(unittest.TestCase):
     def test_ayuda_y_parametros(self):
         import re
         import nube2stl
-        html = open(os.path.join(HERE, 'ayuda.html'), encoding='utf-8').read()
+        html = _read(os.path.join(HERE, 'ayuda.html'))
         ids = set(re.findall(r'id="([^"]+)"', html))
         self.assertFalse(set(re.findall(r'href="#([^"]+)"', html)) - ids, 'enlaces rotos en la ayuda')
         for name in nube2stl.SPEC_BY_NAME:
@@ -1089,12 +1089,68 @@ class Coherencia(unittest.TestCase):
         self.assertEqual(relief.Params.from_json(txt), p)
 
 
+
+class TamanoReal(unittest.TestCase):
+    """Destino «Tamaño real» (copia 1:1), «Profundidad máx.» automática y unidades dudosas."""
+
+    def _fachada(self, L, n=60_000, seed=5):
+        """Una fachada de L mm de ancho, con el terreno cayendo hacia atrás (la mitad de ella, a más de 250 mm)."""
+        rng = np.random.default_rng(seed)
+        x, y = rng.uniform(0, L, n), rng.uniform(0, L / 3, n)
+        z = -0.3 * L * (x > L / 2) * rng.uniform(0, 1, n)      # media nube muy por detrás de la cara
+        return np.c_[x, y, z].astype(np.float32)
+
+    def test_profundidad_auto_crece_con_la_pieza(self):
+        """auto (0): 250 mm en una pieza pequeña; en una de 37 m, la cuarta parte del lado (≈ 9 m)."""
+        p = relief.Params()
+        self.assertEqual(p.behind, 0.0)
+        self.assertEqual(relief.behind_mm(p, 400), 250.0)
+        self.assertAlmostEqual(relief.behind_mm(p, 37_000), 9_250.0)
+        self.assertEqual(relief.behind_mm(relief.Params(behind=120), 37_000), 120.0)     # fijada, manda
+        xyz = self._fachada(37_000)
+        relief._project(xyz, relief.Params(view='frente'))
+        auto = relief._project.dropped
+        relief._project(xyz, relief.Params(view='frente', behind=250))
+        self.assertLess(auto, relief._project.dropped)          # con 250 fijos se perdía mucho más
+
+    def test_tamano_real_sin_impresora(self):
+        """A tamaño real: escala 1 aunque haya lado mayor, sin cama, detalle del escaneo y tolerancia según el uso."""
+        xyz = self._fachada(5_000)
+        p = relief.Params(target='real', target_len=200, nozzle=0.4)
+        st = relief.face_stats(xyz, p)
+        pl = relief.print_plan(st, p)
+        self.assertEqual(pl['scale'], 1.0)
+        self.assertIsNone(pl['fits'])
+        self.assertEqual(pl['why'], 'escaneo')
+        self.assertAlmostEqual(pl['tol'], pl['res'] * relief.REAL_TOL['archivo'])
+        medir = relief.print_plan(st, relief.Params(target='real', use='medir'))
+        self.assertLess(medir['tol'], pl['tol'])
+        imp = relief.print_plan(st, relief.Params(target_len=200))
+        self.assertLess(imp['scale'], 1.0)                      # imprimir: lo de siempre
+
+    def test_tamano_real_sin_realce(self):
+        """El realce de lo pequeño no se aplica a una copia fiel."""
+        h = np.random.default_rng(1).normal(0, 0.1, (40, 40))
+        m = np.ones_like(h, bool)
+        out, _ = relief._boost(h.copy(), None, m, 1.0, relief.Params(target='real', boost=2.0))
+        self.assertTrue(np.array_equal(out, h))
+
+    def test_unidades_dudosas(self):
+        """Se pregunta si lo supuesto es dudoso: metros, una pieza diminuta o una malla de 20 a 5000 «mm»."""
+        import entrada
+        ask = entrada.units_doubt
+        self.assertTrue(ask({'guessed': True, 'units': 'mm', 'kind': 'malla'}, [37, 15, 4]))      # el acueducto
+        self.assertTrue(ask({'guessed': True, 'units': 'm', 'kind': 'nube'}, [3000, 1000, 500]))
+        self.assertFalse(ask({'guessed': True, 'units': 'mm', 'kind': 'nube'}, [400, 300, 80]))   # una lápida
+        self.assertFalse(ask({'guessed': False, 'units': 'mm', 'kind': 'malla'}, [37, 15, 4]))    # elegidas
+
+
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == 'rapidas':
         sys.argv.pop(1)
         suite = unittest.TestSuite()
         for c in (Formatos, Unidades, Limpieza, Escala, Acabado, Ficha, Desviacion, Corte, Formato3MF, Registro,
-                  Recorte, Superficies, Ejemplos, Union, GuardarUnion, Novedades, Esquinas, Realce, MemoriaEscalaReal, Actualizar,
+                  Recorte, Superficies, Ejemplos, Union, GuardarUnion, Novedades, Esquinas, Realce, MemoriaEscalaReal, TamanoReal, Actualizar,
                   Coherencia):
             suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(c))
         setUpModule()

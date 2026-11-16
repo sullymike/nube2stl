@@ -3,7 +3,7 @@
 Lista de trabajo de mejoras y de tipos de objetos nuevos, para retomarlas cuando se decida. Cada propuesta tiene qué
 es, para qué sirve, cómo se haría con lo que ya tiene el programa, el esfuerzo estimado y los riesgos.
 
-- **Estado:** noviembre de 2026, versión 0.21.0: **todas las propuestas de A a E están hechas** (la 0.21 reorganiza la ventana: paneles acoplables, menú Ver). Quedan anotadas con
+- **Estado:** noviembre de 2026, versión 0.22.0: **todas las propuestas de A a F están hechas** (la 0.21 reorganiza la ventana: paneles acoplables, menú Ver; la 0.22 añade la copia a tamaño real). Quedan anotadas con
   lo que se hizo, lo medido en las pruebas y sus límites, para cuando lleguen datos reales.
 - **Ya hechas** (en la ayuda, «Mejoras ya incorporadas»): propuesta automática del tipo, barra de pasos, medir en el
   visor, superficies curvas (cilindro), grabados sobre roca, nubes de ejemplo, unir varias nubes (A1, 0.15.0) y el resto de A y B (0.16.0).
@@ -283,9 +283,44 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
   pieza de dos caras no sale; en los tipos con Poisson es solo un alzado más fino, sin realce (el de la malla se ve
   al generar).
 
+## F. Copia a tamaño real — *HECHO en 0.22.0*
+
+- **Qué es.** (Pregunta del usuario: «¿cómo se podría hacer un objeto STL sin reducir la escala?».) Antes se hacía
+  con Escala 1:1, pero el resto del programa seguía pensando en la impresora: detalle de media boquilla, tolerancia
+  de 0,1 mm, base de 3 mm, cama, capas. Con el acueducto (37 m) eso daba fallos de memoria y una base de papel.
+- **Hecho.**
+  - Parámetro `target` (Destino: imprimir | real), con dos botones arriba del panel Parámetros. En «real»:
+    `relief.is_real`, escala 1, sin cama ni boquilla (`res_print` = la del escaneo), sin realce, y tolerancia de
+    simplificación = celda × `REAL_TOL[use]` (¼; al medir, 1/20). Se ocultan los parámetros de la impresora
+    (`REAL_OFF`).
+  - Parámetro `use` (archivo | cnc | gran formato | medir): fija la tolerancia y el formato que propone Guardar
+    (PLY / STL / 3MF), con «_1a1» en el nombre.
+  - Plan de Tamaño propio (`plan_html_real`): medidas en m o cm, detalle, **hasta dónde llega Poisson**
+    (`relief.poisson_cell`) y aviso si la celda pedida es más fina.
+  - Base proporcional al pasar a tamaño real: 0,5 % del lado mayor, entre 3 y 200 mm.
+  - Asistente: primer paso «¿Para qué es?»; la rama de tamaño real cambia Impresora y Tamaño por «Tamaño real»
+    (unidades con lo que mediría en cada una, uso, resolución, base y el plan).
+  - Con ella, dos cosas que salieron al estudiarla:
+    - **Unidades dudosas**: si «auto» supone metros, una pieza de menos de 5 cm o una malla de 20 a 5000 «mm»
+      (`entrada.units_doubt`), al abrir la nube se pregunta con un cuadro que dice cuánto mediría en cada unidad.
+      En tamaño real se pregunta siempre que estén en auto.
+    - **Profundidad máx. automática** (0 = auto, por defecto): 250 mm o ¼ del lado mayor de la cara si es más
+      (`relief.behind_mm`). Con 250 fijos, una fachada de 37 m perdía media nube.
+- **Medido.** Acueducto (830 000 puntos): en metros, objeto con base, «real»: 35,9 × 15,1 × 4,0 m, celda de
+  44 mm (la del escaneo), Poisson profundidad 10 → 38,5 mm, base 180 mm, tolerancia 11 mm.
+- **Límites.**
+  - La malla sigue saliendo cerrada (con base o trasera): una superficie abierta tal cual (sin base) para
+    archivo no está hecha.
+  - Trocear para gran formato sigue siendo cosa del laminador.
+  - La profundidad de Poisson automática no pasa de 11: en piezas de decenas de metros el detalle tiene un suelo de
+    centímetros, salvo que se suba a mano (y la memoria crece unas 4 veces por nivel).
+
 ---
 
 ## Ideas para después (sin estudiar)
+
+- Copia a tamaño real como superficie abierta (sin base), y por trozos para piezas que ni Poisson con 12 niveles
+  cubre al detalle del escaneo.
 
 - Probar con datos reales: A5 (un LAS del PNOA), A7 (una cueva o una cisterna escaneadas) y C (dos escaneos de una esquina).
 - Dos caras con canto escaneado: proponer unir (A1) en vez de reverso cuando las nubes se solapan.

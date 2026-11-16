@@ -740,6 +740,10 @@ están en mm. En automático, una nube de menos de 20 unidades de lado se toma c
 demás como milímetros; el registro dice qué ha supuesto. Si te equivocas, la pieza a escala o «tamaño real» saldría
 1000 veces más grande o más pequeña: con el lado mayor final no importa, porque se escala igual. Al cambiarlo, la nube
 se vuelve a leer.</p>
+<p>Si lo supuesto es dudoso (se ha tomado como metros, la pieza mide menos de 5 cm, o es una malla de fotogrametría de
+20 a 5000 «mm», que suelen venir en metros), al abrirla <b>se pregunta</b> con un cuadro que dice cuánto mediría la
+pieza en mm, cm, m y pulgadas. Con el destino <a href="#p-target">Copia a tamaño real</a> se pregunta siempre que estén en
+auto.</p>
 <h3 id="p-clean">Quitar grupos sueltos</h3>
 <p class="def">Sí/no · por defecto sí</p>
 <p>Al abrir la nube se lee entera y no se pierde nada: los puntos de los grupos sueltos se pintan <b>en rojo</b> en la
@@ -768,6 +772,35 @@ y dejan de medir lo que pusiste.</p>
 mayor final (que se desactiva). Es lo que conviene para documentar y comparar réplicas, porque la escala queda redonda
 y consta en la ficha PDF. Necesita que las <a href="#p-units">unidades de la nube</a> sean las correctas.</p>
 <p class="ej"><b>Valores de ejemplo:</b> 1 (tamaño real) · 2, 5, 10 · 20 para piezas grandes.</p>
+<h3 id="p-target">Destino: imprimir una réplica o copia a tamaño real</h3>
+<p class="def">Botones de arriba del panel Parámetros · por defecto «Imprimir una réplica»</p>
+<p><b>Imprimir una réplica</b> es lo de siempre: una pieza a escala para la impresora, con el tamaño, la boquilla, las
+capas y la cama de la impresora mandando sobre el detalle y la simplificación.</p>
+<p><b>Copia a tamaño real</b> es una copia digital 1:1 que no va a la impresora tal cual: para archivarla y verla,
+fresarla, imprimirla en gran formato por piezas o medir sobre ella. Cambia esto:</p>
+<ul>
+  <li><b>Escala 1</b>: el lado mayor y la escala desaparecen.</li>
+  <li><b>Sin impresora</b>: boquilla, capa, cama y calidad no cuentan (ni se ven). El detalle es el del escaneo (o la
+      <a href="#p-res">resolución</a> que fijes), en mm reales.</li>
+  <li><b>Simplificación en mm reales</b>: el error admisible es una fracción de la celda según el <a href="#p-use">uso</a>
+      (la cuarta parte; al medir, la vigésima), no media boquilla.</li>
+  <li><b>Sin <a href="#p-boost">realce</a></b>: la copia es fiel.</li>
+  <li><b>Base proporcional</b>: al elegirlo, si la base estaba en 3 mm pasa a medio por ciento del lado mayor
+      (entre 3 y 200 mm): 3 mm bajo una piedra de 37 m serían una lámina.</li>
+  <li><b>Unidades seguras</b>: si están en «auto», se preguntan (con lo que mediría la pieza en cada una). A escala
+      reducida un error de unidades se nota poco; a 1:1 es el resultado entero.</li>
+</ul>
+<p>La pestaña Tamaño enseña entonces la medida real (en m o cm), el detalle, <b>hasta dónde llega Poisson</b> en los
+tipos 3D (en piezas muy grandes no baja de unos 20 mm con la profundidad automática: pedir menos resolución no da más
+detalle) y la simplificación. Al guardar, propone el formato del uso y añade «_1a1» al nombre.</p>
+<h3 id="p-use">Uso (tamaño real)</h3>
+<p class="def">Solo con «Copia a tamaño real» · por defecto archivo</p>
+<ul>
+  <li><b>archivo</b>: guardarla y verla; propone PLY (con el color de la nube).</li>
+  <li><b>cnc</b>: fresarla; propone STL.</li>
+  <li><b>gran formato</b>: imprimirla por piezas; propone 3MF. Hay que trocearla en el laminador.</li>
+  <li><b>medir</b>: lo más fiel posible: casi sin simplificar (error admisible de 1/20 de la celda); ficheros grandes.</li>
+</ul>
 <h3 class="grupo">Pestaña Pieza</h3>
 <h3 id="p-shape">Forma</h3>
 <ul>
@@ -923,7 +956,7 @@ Orientar</p>
       guardan con los ajustes.</li>
 </ul>
 <h3 id="p-behind">Profundidad máxima</h3>
-<p class="def">Unidades de la nube · por defecto 250</p>
+<p class="def">Unidades de la nube · por defecto auto (250 mm, o la cuarta parte del lado mayor de la cara si es más)</p>
 <p><b>Para elegir el valor</b>, debajo del campo (pestaña Orientación y paso Acabado del asistente) aparecen las medidas
 de la nube: tamaño de la cara, profundidad del relieve y hasta dónde llegan los puntos por detrás de la cara y por
 delante, y cuánto mide 1 unidad en la pieza. En modo bloque dice además el grosor que saldría con el valor actual y
@@ -937,7 +970,9 @@ terreno en pendiente o un edificio visto de frente, casi seguro que hay que subi
 Los laterales escaneados se conservan hasta esa profundidad y ahí se pone la trasera plana (o antes, si el escaneo
 no llega tan lejos).</p>
 
-<p class="ej"><b>Valores de ejemplo:</b> 250 para una cara de un bloque (en modo bloque: el grosor que quieras darle); 50–100 si se cuelan puntos de las caras laterales; 1000 o más si el relieve es muy profundo.</p>
+<p><b>Auto</b> deja 250 mm en piezas normales (una lápida, un bloque) y crece con las grandes: en la fachada de un
+acueducto de 37 m son unos 9 m (con 250 fijos quedaba fuera casi la mitad de la nube).</p>
+<p class="ej"><b>Valores de ejemplo:</b> auto · 250 para una cara de un bloque (en modo bloque: el grosor que quieras darle); 50–100 si se cuelan puntos de las caras laterales; 1000 o más si el relieve es muy profundo.</p>
 <h3 id="p-flip">Invertir cara frontal</h3>
 <p>El programa decide qué lado es el frente fijándose en que las caras laterales del bloque se alejan hacia atrás.
 Si la nube no tiene esas caras o son muy cortas, puede equivocarse: verás el relieve hundido o un reborde alto alrededor.
@@ -1341,6 +1376,9 @@ las pérdidas, de mayor a menor importancia:</p>
       de Orientar.</li>
   <li><b>Simplificación adaptativa</b>, con <i>Simplificar</i>. Reduce los ficheros de 10 a 30 veces, con error medido y
       comprobación de que la malla sigue cerrada.</li>
+  <li><b><a href="#p-target">Copia a tamaño real</a></b> (1:1, sin impresora; detalle y simplificación en mm reales
+      según el <a href="#p-use">uso</a>), unidades dudosas preguntadas al abrir y
+      <a href="#p-behind">Profundidad máx.</a> automática.</li>
 </ul>
 
 <h3>Unir las caras de los laterales de ejemplo</h3>

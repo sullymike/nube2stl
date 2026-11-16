@@ -204,9 +204,21 @@ def preview_params(prm, stats):
     return p
 
 
+def is_real(prm):
+    """Destino «Tamaño real»: copia digital 1:1 (archivo, fresado, gran formato, medir), no una réplica para la
+    impresora: escala 1, sin cama ni boquilla, detalle y simplificación en mm reales."""
+    return getattr(prm, 'target', 'imprimir') == 'real'
+
+
+# simplificación a tamaño real: error admisible = esta fracción del detalle (celda), según el uso
+REAL_TOL = {'archivo': 0.25, 'cnc': 0.25, 'gran formato': 0.25, 'medir': 0.05}
+
+
 def piece_scale(prm, L):
     """Factor nube (mm) -> pieza (mm): 1/ratio si se fija la escala 1:ratio; si no, lado mayor final / L;
-    tamaño real si target_len = 0."""
+    tamaño real si target_len = 0 o si el destino es «Tamaño real»."""
+    if is_real(prm):
+        return 1.0
     if getattr(prm, 'ratio', 0) > 0:
         return 1.0 / prm.ratio
     return prm.target_len / L if prm.target_len > 0 and L > 0 else 1.0
@@ -221,7 +233,7 @@ class Params:
     plane: str = 'nube'            # plano de la cara (con «Mirar desde» auto): 'nube' (toda la nube) | 'cara' (solo la
                                    # cara frontal, sin laterales ni roturas) | 'puntos' (los tres de plane_pts)
     plane_pts: list = field(default_factory=list)     # tres puntos (mm de la nube) marcados en la cara
-    behind: float = 250.0          # descarta puntos más atrás que esto respecto al plano medio
+    behind: float = 0.0            # descarta puntos más atrás que esto respecto al plano medio (0 = auto, behind_mm)
     flip: bool = False             # invertir la cara frontal detectada
     mirror: bool = False           # espejar izquierda-derecha
     auto_straighten: bool = False  # girar en el plano para alinear el contorno con los ejes
@@ -275,6 +287,8 @@ class Params:
     bed_x: float = 220.0           # ancho de la cama (0 = no comprobar)
     bed_y: float = 220.0           # fondo de la cama
     quality: str = 'alta'          # tolerancia de la simplificación automática: 'normal' | 'alta' | 'maxima'
+    target: str = 'imprimir'       # destino: 'imprimir' (réplica a escala para la impresora) | 'real' (copia 1:1)
+    use: str = 'archivo'           # tamaño real: 'archivo' | 'cnc' | 'gran formato' | 'medir' (simplificación)
     # método y malla
     mode: str = 'alturas'          # 'alturas' (2,5D) | '3d' (Poisson, socavados) | 'bloque' (cara y laterales)
                                    # | 'objeto' (completo, escaneado por todos los lados)
@@ -482,6 +496,17 @@ def plane_key(prm):
             tuple(tuple(round(float(x), 4) for x in q) for q in (getattr(prm, 'plane_pts', None) or [])))
 
 
+BEHIND_MIN, BEHIND_FRAC = 250.0, 0.25
+
+
+def behind_mm(prm, length):
+    """«Profundidad máx.» en mm de la nube: la fijada o, en «auto» (0), 250 mm o la cuarta parte del lado mayor de la
+    cara si es más (una lápida: 250; la fachada de un acueducto de 37 m: unos 9 m, en vez de dejar fuera la mitad)."""
+    if prm.behind > 0:
+        return float(prm.behind)
+    return max(BEHIND_MIN, BEHIND_FRAC * float(length or 0.0))
+
+
 def _project(p, prm):
     m, u, v, n = _frame_axes(p, prm)
     A = np.stack([u, v, n], 1)
@@ -489,7 +514,9 @@ def _project(p, prm):
     for i in range(0, len(p), 2_000_000):          # por bloques para no duplicar la nube en memoria
         UVH[i:i + 2_000_000] = (p[i:i + 2_000_000] - m) @ A
     H = UVH[:, 2]
-    keep = H > np.median(H) - prm.behind
+    L = max(float(np.ptp(UVH[:, 0])), float(np.ptp(UVH[:, 1]))) if len(UVH) else 0.0
+    _project.behind = behind_mm(prm, L)
+    keep = H > np.median(H) - _project.behind
     _project.dropped = 1 - keep.mean() if len(keep) else 0.0
     UVH = UVH[keep]
     _project.last = (m, A)
@@ -643,9 +670,12 @@ def _nice(x):
 QUALITY = {'normal': 1.0, 'alta': 0.5, 'maxima': 0.25}
 
 
-def tolerance(prm):
+def tolerance(prm, res=None):
     """Error admisible al simplificar (mm de la pieza): media boquilla o media capa (lo menor), por el factor de
-    calidad. Por debajo de eso la impresora no reproduce la diferencia."""
+    calidad. Por debajo de eso la impresora no reproduce la diferencia.
+    A tamaño real no hay impresora: una fracción de la celda (res, mm reales) según el uso (REAL_TOL)."""
+    if is_real(prm):
+        return (res or prm.res or 1.0) * REAL_TOL.get(getattr(prm, 'use', 'archivo'), 0.25)
     return min(prm.nozzle, prm.layer) / 2 * QUALITY.get(prm.quality, 0.5)
 
 
@@ -662,25 +692,25 @@ def print_plan(stats, prm):
         return _print_plan_object(stats['obj'], prm)
     L, W = stats['length'], stats['width']
     s = piece_scale(prm, L)
-    res_print = prm.nozzle / (2 * s)
     res_scan = stats['res_scan']
+    res_print = res_scan if is_real(prm) else prm.nozzle / (2 * s)     # a tamaño real no hay boquilla
     if prm.res > 0:
         res, why = prm.res, 'manual'
-    elif res_print >= res_scan:
+    elif res_print >= res_scan and not is_real(prm):
         res, why = _nice(res_print), 'impresora'
     else:
         res, why = _nice(res_scan), 'escaneo'
     sx, sy = L * s + 2 * prm.frame, W * s + 2 * prm.frame
     fits = None
-    if prm.bed_x > 0 and prm.bed_y > 0:
+    if prm.bed_x > 0 and prm.bed_y > 0 and not is_real(prm):
         fits = (sx <= prm.bed_x and sy <= prm.bed_y) or (sx <= prm.bed_y and sy <= prm.bed_x)
     raw = depth_detrended(stats, prm) if uses_detrend(prm) and 'coarse' in stats else stats.get('depth', 0.0)
     depth = raw * s * prm.z_scale                                   # relieve en la pieza (mm)
     return {'scale': s, 'res_print': res_print, 'res_scan': res_scan, 'res': res, 'why': why,
-            'cell_print': res * s, 'tol': tolerance(prm), 'size': (sx, sy), 'fits': fits,
+            'cell_print': res * s, 'tol': tolerance(prm, res), 'size': (sx, sy), 'fits': fits,
             'cells': (L / res) * (W / res), 'depth': depth,
             'layers': depth / prm.layer if prm.layer > 0 else 0.0,
-            'height': (min(prm.behind, -stats['h_q'][0]) + stats['h_q'][1]) * s
+            'height': (min(behind_mm(prm, max(L, W)), -stats['h_q'][0]) + stats['h_q'][1]) * s
             if prm.mode == 'bloque' and 'h_q' in stats else depth + prm.base}
 
 
@@ -699,21 +729,21 @@ def _print_plan_object(ob, prm):
     ex, ey, ez = _object_extents(ob, prm)
     L = max(ex, ey, ez)
     s = piece_scale(prm, L)
-    res_print = prm.nozzle / (2 * s)
     res_scan = ob['res_scan']
+    res_print = res_scan if is_real(prm) else prm.nozzle / (2 * s)
     if prm.res > 0:
         res, why = prm.res, 'manual'
-    elif res_print >= res_scan:
+    elif res_print >= res_scan and not is_real(prm):
         res, why = _nice(res_print), 'impresora'
     else:
         res, why = _nice(res_scan), 'escaneo'
     sx, sy = ex * s, ey * s
     height = max(ez * s - max(prm.cut, 0.0), 0.0)
     fits = None
-    if prm.bed_x > 0 and prm.bed_y > 0:
+    if prm.bed_x > 0 and prm.bed_y > 0 and not is_real(prm):
         fits = (sx <= prm.bed_x and sy <= prm.bed_y) or (sx <= prm.bed_y and sy <= prm.bed_x)
     return {'scale': s, 'res_print': res_print, 'res_scan': res_scan, 'res': res, 'why': why,
-            'cell_print': res * s, 'tol': tolerance(prm), 'size': (sx, sy), 'fits': fits,
+            'cell_print': res * s, 'tol': tolerance(prm, res), 'size': (sx, sy), 'fits': fits,
             'cells': ob['area'] / res ** 2, 'depth': height,
             'layers': height / prm.layer if prm.layer > 0 else 0.0, 'height': height, 'object': True,
             'ext': max(ex, ey, ez)}
@@ -757,15 +787,21 @@ def poisson_depth_auto(stats, prm, res, ext=None):
     return int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, 11))
 
 
+def poisson_cell(stats, prm, res):
+    """(profundidad, celda) de Poisson: la celda a la que de verdad llega con esa profundidad (en piezas grandes,
+    más gruesa que la resolución pedida: la profundidad automática no pasa de 11)."""
+    depth = prm.poisson_depth or poisson_depth_auto(stats, prm, res)
+    ext = (max(_object_extents(stats['obj'], prm)) if prm.mode == 'objeto' and 'obj' in stats
+           else max(stats['length'], stats['width']))
+    return depth, ext * 1.1 / 2 ** depth
+
+
 def memory_estimate(stats, prm, npoints, avail=None):
     """Pico de memoria previsto para generar con estos parámetros y comparación con la memoria libre."""
     pl = print_plan(stats, prm)
     cells = pl['cells']
     if prm.mode in ('3d', 'objeto', 'bloque'):
-        depth = prm.poisson_depth or poisson_depth_auto(stats, prm, pl['res'])
-        ext = (max(_object_extents(stats['obj'], prm)) if prm.mode == 'objeto' and 'obj' in stats
-               else max(stats['length'], stats['width']))
-        pcell = ext * 1.1 / 2 ** depth          # la celda a la que de verdad llega Poisson con esa profundidad:
+        depth, pcell = poisson_cell(stats, prm, pl['res'])
         if pcell > pl['res']:                   # en piezas grandes y finas (un acueducto a escala 1) es más gruesa
             cells *= (pl['res'] / pcell) ** 2   # que la resolución pedida, y no hay tantas celdas
         per_cell = MEM_PER_CELL_3D.get(depth) or (MEM_PER_CELL_3D[13] if depth > 13
@@ -870,7 +906,7 @@ class OrientPreview:
             U = -U
         if prm.flip:
             H = -H
-        keep = H > np.median(H) - prm.behind
+        keep = H > np.median(H) - behind_mm(prm, self.length)
         return U[keep], V[keep], H[keep]
 
     def auto_angle(self, prm):
@@ -1090,7 +1126,7 @@ def heightmap(p, prm: Params, rgb=None, log=lambda s: None):
         log('Plano principal y cara frontal calculados' if vw not in VIEWS else f'Cara vista desde: {vw}')
     drop = getattr(_project, 'dropped', 0.0)
     if drop > 0.05:
-        log(f'AVISO: «Profundidad máx.» ({prm.behind:g} mm) deja fuera el {100 * drop:.0f} % de los puntos, los que '
+        log(f'AVISO: «Profundidad máx.» ({_project.behind:.0f} mm{" auto" if prm.behind <= 0 else ""}) deja fuera el {100 * drop:.0f} % de los puntos, los que '
             f'quedan más atrás del plano medio de la cara. Si son parte de la pieza (terreno en pendiente, un '
             f'edificio visto de frente), súbela.')
 
@@ -1258,7 +1294,7 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None):
     color = r.vcolors is not None
     log(f'Tamaño del fichero sin simplificar: {sizes_text(len(r.verts), len(r.tris), color)}')
     if prm.simplify <= 0:
-        r = simplify_auto(r, tolerance(prm), log, threads_for(prm, 'simplify'))
+        r = simplify_auto(r, tolerance(prm, r.res), log, threads_for(prm, 'simplify'))
         log(f'Tamaño final: {sizes_text(len(r.verts), len(r.tris), color)}')
     elif prm.simplify < 100:
         f = prm.simplify / 100
@@ -1314,7 +1350,7 @@ def boost_text(prm, s, zs=1.0):
 def _boost(h, hb, mask, res, prm, log=lambda s: None):
     """Realce de lo pequeño (boost_small) en la cara y en el reverso. h en unidades de la nube (mm de la piedra)
     ya multiplicadas por la exageración: el detalle se mide en la piedra, sin exagerar."""
-    if getattr(prm, 'boost', 1.0) <= 1:
+    if getattr(prm, 'boost', 1.0) <= 1 or is_real(prm):      # a tamaño real, la copia es fiel: sin realce
         return h, hb
     nv, nu = mask.shape
     s = piece_scale(prm, max(nu, nv) * res)
@@ -1842,7 +1878,7 @@ def boost_mesh(V, T, gain=2.0, lo=0.1, hi=0.5, size=3.0, chunk=4096):
 
 def _boost_result(r, prm, log=lambda s: None):
     """Realce de lo pequeño en una pieza hecha con Poisson (la malla ya está en mm de la pieza)."""
-    if getattr(prm, 'boost', 1.0) <= 1:
+    if getattr(prm, 'boost', 1.0) <= 1 or is_real(prm):
         return r
     s = r.scale                                 # la malla está en mm de la pieza: los umbrales, a la pieza
     zs = prm.z_scale if r.mode == '3d' else 1.0
