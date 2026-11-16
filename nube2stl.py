@@ -2062,7 +2062,10 @@ class MainWindow(QMainWindow):
         self._kind_chosen = True              # ajustes cargados, asistente o registro: el tipo ya está elegido
         self._merge_note()
         self._rev_note()
-        if old.merge != p.merge or old.classes != p.classes:     # otras nubes o clases: hay que volver a leer
+        if old.units != p.units:                  # otras unidades: todas las medidas cambian (sin releer, la ventana
+            # medía la nube con las de antes y la estimación de memoria salía mil veces corta, ej. «auto» = mm y «m»)
+            self._reload_cloud(keep_sel=True, why=f'--- Releyendo la nube en {p.units} (unidades de los ajustes)')
+        elif old.merge != p.merge or old.classes != p.classes:     # otras nubes o clases: hay que volver a leer
             self._reload_cloud(keep_sel=True, why='--- Releyendo la nube con las nubes unidas de los ajustes')
         elif prep_state(old) != prep_state(p) or relief.plane_key(old) != relief.plane_key(p):
             self._toggle_clean(keep_view=True)    # nube desenrollada o vista de otro lado: medidas y orientación

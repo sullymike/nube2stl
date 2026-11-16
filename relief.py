@@ -763,6 +763,11 @@ def memory_estimate(stats, prm, npoints, avail=None):
     cells = pl['cells']
     if prm.mode in ('3d', 'objeto', 'bloque'):
         depth = prm.poisson_depth or poisson_depth_auto(stats, prm, pl['res'])
+        ext = (max(_object_extents(stats['obj'], prm)) if prm.mode == 'objeto' and 'obj' in stats
+               else max(stats['length'], stats['width']))
+        pcell = ext * 1.1 / 2 ** depth          # la celda a la que de verdad llega Poisson con esa profundidad:
+        if pcell > pl['res']:                   # en piezas grandes y finas (un acueducto a escala 1) es más gruesa
+            cells *= (pl['res'] / pcell) ** 2   # que la resolución pedida, y no hay tantas celdas
         per_cell = MEM_PER_CELL_3D.get(depth) or (MEM_PER_CELL_3D[13] if depth > 13
                                                     else MEM_PER_CELL_3D[9] / 1.6 ** (9 - depth))
         if prm.mode == 'bloque':      # los laterales añaden superficie (perímetro × grosor), aprox. un 30 %

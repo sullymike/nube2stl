@@ -295,9 +295,26 @@ def _base_cap(P, zc, res):
     return cap, np.tile([0, 0, -1.0], (len(cap), 1))
 
 
-def _ground_skirt(P, res, zb):
+def _ground_skirt(P, res, zb, budget=None):
     """Paredes verticales en el contorno de la planta (desde la superficie escaneada hasta zb) y base plana en zb:
-    (puntos, normales) sintéticos para cerrar un escaneo abierto por abajo."""
+    (puntos, normales) sintéticos para cerrar un escaneo abierto por abajo.
+
+    Como mucho ``budget`` puntos (por defecto, el doble de los de la nube): si a la resolución pedida salen más, la
+    celda de las paredes y la base crece. Con una resolución fina sobre una nube rala y alta (un acueducto a escala
+    1 con celda de 5 mm), la planta quedaba salpicada de celdas sueltas, cada una con su pared de metros: 106
+    millones de puntos y 18 GB solo para cerrar la base."""
+    budget = budget or max(2 * len(P), 200_000)
+    cell = res
+    for _ in range(12):
+        out, n = _skirt_at(P, cell, zb, budget)       # cuenta antes de fabricar los puntos
+        if out is not None:
+            break
+        cell *= max(1.5, (n / budget) ** 0.5)
+    return out + (cell,)
+
+
+def _skirt_at(P, res, zb, budget=None):
+    """(puntos, normales, nº de la base, área) a esta celda, o (None, cuántos saldrían) si pasan de budget."""
     m = 3
     x0, y0 = P[:, :2].min(0) - m * res
     ix = ((P[:, 0] - x0) / res).astype(np.int64)
@@ -314,6 +331,9 @@ def _ground_skirt(P, res, zb):
     sm = ndimage.gaussian_filter(occ.astype(float), 1.5)
     gy, gx = np.gradient(sm)
     rr, cc = np.nonzero(edge)
+    n = int(occ.sum()) + int(np.maximum(np.ceil((low[rr, cc] - zb) / res), 0).sum())
+    if budget is not None and n > budget:
+        return None, n
     nx, ny = -gx[rr, cc], -gy[rr, cc]
     nn = np.hypot(nx, ny) + 1e-12
     wall, wn = [], []
@@ -326,7 +346,7 @@ def _ground_skirt(P, res, zb):
     bottom = np.c_[x0 + (bc + .5) * res, y0 + (br + .5) * res, np.full(len(br), zb)]
     pts = np.vstack(wall + [bottom]) if wall else bottom
     nrm = np.vstack(wn + [np.tile([0, 0, -1.0], (len(bottom), 1))]) if wn else np.tile([0, 0, -1.0], (len(bottom), 1))
-    return pts, nrm, len(bottom), float(occ.sum() * res * res)
+    return (pts, nrm, len(bottom), float(occ.sum() * res * res)), len(pts)
 
 
 def _invented(verts, tris, pts, res):
@@ -385,9 +405,11 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None):
         zmin = float(np.percentile(Pg[:, 2], 0.05))
         zc = zmin - max(prm.base, 0.2) / s
         pc = pc.select_by_index(np.flatnonzero(Pg[:, 2] >= zmin))
-        sk, skn, nb, area = _ground_skirt(np.asarray(pc.points), res, zc)
+        sk, skn, nb, area, sk_cell = _ground_skirt(np.asarray(pc.points), res, zc)
         log(f'Abierto por abajo: paredes en el contorno y base plana {prm.base:g} mm bajo el punto más bajo '
-            f'({len(sk) - nb:,} + {nb:,} puntos sintéticos; planta de {area * s * s / 100:.1f} cm²)')
+            f'({len(sk) - nb:,} + {nb:,} puntos sintéticos; planta de {area * s * s / 100:.1f} cm²'
+            + (f'; cada {sk_cell:.3g}, no {res:.3g}, para no pasar del doble de los puntos de la nube)'
+               if sk_cell > res * 1.01 else ')'))
         if have_n:
             log('Normales del fichero: no se usan con «Abierto por abajo» (se orientan de nuevo, mirando desde '
                 'arriba y los lados)')

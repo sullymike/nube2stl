@@ -900,6 +900,36 @@ class Realce(unittest.TestCase):
         self.assertLess(np.abs(dr[Z > 40]).max(), 0.025)              # junto al canto grande, casi nada
         self.assertLess((np.abs(dr[Z > 40]) > 0.01).sum(), 5)          # (un vértice en la esquina de la caja)
 
+class MemoriaEscalaReal(unittest.TestCase):
+    """Piezas enormes a escala 1 (un acueducto de 37 m en metros con celda de 5 mm): lo que antes agotaba la memoria."""
+
+    def test_paredes_de_la_base_acotadas(self):
+        """«Abierto por abajo» pone paredes y base sintéticas. Con una celda mucho más fina que la nube (rala y
+        alta), la planta salía salpicada de celdas sueltas con paredes de metros: 106 millones de puntos. Ahora
+        nunca pasan del doble de los puntos de la nube, y la celda crece lo justo."""
+        import objeto3d
+        rng = np.random.default_rng(3)
+        n = 20_000
+        P = np.c_[rng.uniform(0, 37_000, n), rng.uniform(0, 8_000, n), rng.uniform(500, 4_000, n)]
+        pts, nrm, nb, area, cell = objeto3d._ground_skirt(P, 5.0, 0.0)
+        self.assertLessEqual(len(pts), max(2 * n, 200_000))
+        self.assertGreater(cell, 5.0)
+        self.assertEqual(len(pts), len(nrm))
+        self.assertGreater(area, 0.5 * 37_000 * 8_000)            # la planta sigue cerrada entera
+        dense = np.c_[rng.uniform(0, 100, n), rng.uniform(0, 100, n), rng.uniform(0, 5, n)]
+        self.assertEqual(objeto3d._ground_skirt(dense, 2.0, -1.0)[4], 2.0)   # si cabe, a la celda pedida
+
+    def test_estimacion_con_poisson_limitado(self):
+        """La profundidad de Poisson llega como mucho a 11: en una pieza de 37 m la celda real es de unos 20 mm,
+        y pedir 5 mm no cuadruplica la memoria (la estimación decía 113 GB para algo que gasta 2)."""
+        rng = np.random.default_rng(4)
+        xyz = np.c_[rng.uniform(0, 37_000, 200_000), rng.uniform(0, 15_000, 200_000), rng.uniform(0, 4_000, 200_000)]
+        gb = []
+        for r in (20.0, 5.0):
+            p = relief.Params(mode='objeto', ground=True, ratio=1.0, res=r)
+            gb.append(relief.memory_estimate(relief.face_stats(xyz, p), p, len(xyz), avail=20)['gb'])
+        self.assertLess(gb[1], 1.2 * gb[0])
+
 
 def _write(path, text):
     with open(path, 'w', encoding='utf-8') as f:
@@ -1064,7 +1094,7 @@ if __name__ == '__main__':
         sys.argv.pop(1)
         suite = unittest.TestSuite()
         for c in (Formatos, Unidades, Limpieza, Escala, Acabado, Ficha, Desviacion, Corte, Formato3MF, Registro,
-                  Recorte, Superficies, Ejemplos, Union, GuardarUnion, Novedades, Esquinas, Realce, Actualizar,
+                  Recorte, Superficies, Ejemplos, Union, GuardarUnion, Novedades, Esquinas, Realce, MemoriaEscalaReal, Actualizar,
                   Coherencia):
             suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(c))
         setUpModule()

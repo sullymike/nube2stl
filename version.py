@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.21.0'
+__version__ = '0.21.1'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,18 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.21.1', 'noviembre 2026', [
+        'Piezas enormes a escala real (un acueducto de 37 m): «Abierto por abajo» ya no llena la memoria. Sus paredes '
+        'y su base no pasan del doble de los puntos de la nube (antes, con celda de 5 mm, 106 millones de puntos y '
+        '18 GB; ahora 1,8 GB)',
+        'Al cargar unos ajustes con otras unidades se vuelve a leer la nube: antes la ventana seguía midiéndola con '
+        'las de antes (un acueducto en metros tomado por 36 mm) y la estimación de memoria salía mil veces corta',
+        'La estimación de memoria cuenta la celda a la que de verdad llega Poisson (en piezas muy grandes, más gruesa '
+        'que la resolución pedida)',
+        'La reconstrucción se vigila mientras trabaja: si el equipo se queda sin memoria se para a tiempo (sin '
+        'atascarlo) y el aviso dice en qué paso iba y cuánto gastaba; los ajustes del intento quedan en '
+        'ultimo_fallo.json, en la carpeta de configuración',
+    ]),
     ('0.21.0', 'noviembre 2026', [
         'Ventana más despejada: los parámetros ocupan todo el alto (el fichero pasa a la derecha, cargar/guardar '
         'ajustes van en el botón «Ajustes» y la propuesta del tipo de pieza en una sola línea); cabe todo sin barra '
