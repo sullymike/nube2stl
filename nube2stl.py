@@ -994,6 +994,9 @@ def update_task(info, log):
     return actualizar.update(info, log)
 
 
+_RUNNING = set()       # búsquedas abandonadas al cerrar el diálogo, hasta que su hilo termine
+
+
 class UpdateDialog(QDialog):
     """Ayuda › Buscar actualizaciones: busca en GitHub la última versión, enseña sus novedades y la instala (git pull
     o copiando la carpeta; el ejecutable solo abre la página de descarga). Ver actualizar.py."""
@@ -1026,8 +1029,8 @@ class UpdateDialog(QDialog):
         self.b_go.clicked.connect(self.go)
         self.b_restart = QPushButton('Reiniciar nube2stl')
         self.b_restart.clicked.connect(self.restart)
-        b_close = QPushButton('Cerrar')
-        b_close.clicked.connect(self.accept)
+        b_close = self.b_close = QPushButton('Cerrar')
+        b_close.clicked.connect(self.reject)
         for b in (self.b_page, self.b_go, self.b_restart):
             b.hide()
             row.addWidget(b)
@@ -1052,7 +1055,25 @@ class UpdateDialog(QDialog):
         self.worker.log.connect(self.text.append)
         self.worker.start()
 
+    def done(self, r):
+        """Cerrar (botón, Esc o la X): sin más. Una búsqueda en marcha se abandona (el hilo acaba solo y nadie
+        recoge su respuesta); mientras se instala no se cierra."""
+        w = self.worker
+        if w is not None and w.isRunning():
+            if not self.b_close.isEnabled():
+                return
+            for sig in (w.done, w.failed, w.log):
+                try:
+                    sig.disconnect()
+                except TypeError:
+                    pass
+            _RUNNING.add(w)                   # que el hilo no se destruya con el diálogo (Qt abortaría)
+            w.finished.connect(lambda: _RUNNING.discard(w))
+        super().done(r)
+
     def failed(self, msg):
+        self.b_close.setEnabled(True)
+        self.b_close.setText('Cerrar')
         self.b_go.setEnabled(True)
         self.head.setText(f'<b>nube2stl {__version__}</b><br><span style="color:{C["bad"]}">{msg}</span>')
 
@@ -1083,9 +1104,13 @@ class UpdateDialog(QDialog):
         self.b_go.setEnabled(False)
         self.text.clear()
         self.head.setText(f'<b>Actualizando a la {self.info["version"]}…</b>')
-        self.run(update_task, (self.info,), self.done)
+        self.b_close.setEnabled(False)       # a medias el programa quedaría mezclado: se espera a que acabe
+        self.b_close.setText('Actualizando…')
+        self.run(update_task, (self.info,), self.updated)
 
-    def done(self, changed):
+    def updated(self, changed):           # no «done»: es el método de QDialog que cierra la ventana
+        self.b_close.setEnabled(True)
+        self.b_close.setText('Cerrar')
         self.changed = changed
         self.b_go.hide()
         if changed:
@@ -1099,7 +1124,7 @@ class UpdateDialog(QDialog):
         """Cierra la ventana (con sus preguntas de siempre) y, si se cierra, abre el programa de nuevo."""
         from PyQt5.QtCore import QProcess
         win = self.parent()
-        self.accept()
+        self.accept()                     # (aquí no hay hilo en marcha: la instalación ya ha acabado)
         if win is not None and not win.close():
             return
         QProcess.startDetached(sys.executable, [os.path.join(HERE, 'nube2stl.py')])
