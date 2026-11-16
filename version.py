@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.20.0'
+__version__ = '0.21.0'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,15 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.21.0', 'noviembre 2026', [
+        'Ventana más despejada: los parámetros ocupan todo el alto (el fichero pasa a la derecha, cargar/guardar '
+        'ajustes van en el botón «Ajustes» y la propuesta del tipo de pieza en una sola línea); cabe todo sin barra '
+        'de desplazamiento en una pantalla de 1080 líneas salvo Avanzado',
+        'Menú Ver: Parámetros, Fichero, Resultado y Registro son paneles que se ponen a la izquierda o a la '
+        'derecha, en pestañas, sueltos en otra pantalla o se cierran; la disposición se recuerda',
+        'Buscar actualizaciones: «Cerrar» cierra sin más (antes enseñaba «Actualizado… Reiniciar»); cerrar mientras '
+        'busca ya no puede hacer caer el programa, y mientras instala espera a que acabe',
+    ]),
     ('0.20.0', 'noviembre 2026', [
         '«Realzar lo pequeño» en todos los tipos de pieza: en los hechos con Poisson (objeto, fragmento, interior, '
         'terreno, bloque, socavados) se aplica a la malla, siguiendo las curvas de la pieza y sin tocar aristas vivas',
@@ -22,11 +31,6 @@ HISTORY = [
         'la alineación reutiliza lo ya calculado y es unas tres veces más rápida',
         'Los parámetros que no cuentan para el tipo de pieza se quitan sin dejar huecos, y la barra de desplazamiento '
         'solo sale si hace falta',
-        'Ventana más despejada: los parámetros ocupan todo el alto (el fichero pasa a la derecha, cargar/guardar '
-        'ajustes van en el botón «Ajustes» y la propuesta del tipo de pieza en una sola línea); cabe todo sin barra '
-        'de desplazamiento en una pantalla de 1080 líneas salvo Avanzado',
-        'Menú Ver: Parámetros, Fichero, Resultado y Registro son paneles que se ponen a la izquierda o a la '
-        'derecha, en pestañas, sueltos en otra pantalla o se cierran; la disposición se recuerda',
         'Publicado en GitHub: Ayuda › «Buscar actualizaciones…» enseña las novedades de la última versión y la instala '
         '(git pull, o copiando los ficheros nuevos y guardando los de antes); al abrir avisa en la barra de estado si '
         'hay una nueva (como mucho una vez al día). En la consola: --actualizar',

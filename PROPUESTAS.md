@@ -3,7 +3,7 @@
 Lista de trabajo de mejoras y de tipos de objetos nuevos, para retomarlas cuando se decida. Cada propuesta tiene qué
 es, para qué sirve, cómo se haría con lo que ya tiene el programa, el esfuerzo estimado y los riesgos.
 
-- **Estado:** noviembre de 2026, versión 0.20.0: **todas las propuestas de A a E están hechas**. Quedan anotadas con
+- **Estado:** noviembre de 2026, versión 0.21.0: **todas las propuestas de A a E están hechas** (la 0.21 reorganiza la ventana: paneles acoplables, menú Ver). Quedan anotadas con
   lo que se hizo, lo medido en las pruebas y sus límites, para cuando lleguen datos reales.
 - **Ya hechas** (en la ayuda, «Mejoras ya incorporadas»): propuesta automática del tipo, barra de pasos, medir en el
   visor, superficies curvas (cilindro), grabados sobre roca, nubes de ejemplo, unir varias nubes (A1, 0.15.0) y el resto de A y B (0.16.0).
