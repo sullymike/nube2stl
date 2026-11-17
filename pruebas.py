@@ -1198,6 +1198,16 @@ class ZonasDetalle3D(unittest.TestCase):
             sc.add_triangles(o3d.core.Tensor(V), o3d.core.Tensor(r.tris.astype(np.uint32)))
             d = sc.compute_distance(o3d.core.Tensor(xyz)).numpy()
             err.append((d[zin].mean(), d[~zin].mean(), len(r.tris)))
+            if det:     # la pieza recuerda sus zonas (también al pasar por el .npz del proceso aparte) para pintarlas
+                import proceso
+                f = os.path.join(TMP, 'zona.npz')
+                proceso.save_result(f, r)
+                r2 = proceso.load_result(f)
+                z = relief.zone_on_mesh(r2)
+                self.assertTrue(np.array_equal(z, relief.zone_mask(V, [zone])))
+                self.assertTrue(0.1 < z.mean() < 0.9)
+            else:
+                self.assertIsNone(relief.zone_on_mesh(r))
         (zin0, out0, n0), (zin1, out1, n1) = err
         self.assertLess(zin1, 0.4 * zin0)              # en la zona, el error baja a menos de la mitad (≈ 5 veces)
         self.assertLess(out1, 1.3 * out0)              # fuera, como sin zona

@@ -24,6 +24,11 @@ def save_result(path, r):
         extra['xform'] = np.asarray(r.xform)
     if r.zclip is not None:
         extra['zclip'] = np.asarray(r.zclip, float)
+    if getattr(r, 'detail_zones', None):          # zonas de detalle, para pintarlas en la malla
+        import json
+        extra['detail_zones'] = np.array(json.dumps(r.detail_zones))
+        extra['detail_xform'] = np.asarray(r.detail_xform, float)
+        extra['detail_res'] = np.array(float(r.detail_res))
     np.savez(path, verts=r.verts, tris=r.tris, grid=r.grid,
              scalars=np.array([r.cell, r.scale, r.angle, r.bad_edges, r.volume, r.err_mean, r.err_max,
                               r.err_p99, r.res]),
@@ -33,12 +38,17 @@ def save_result(path, r):
 def load_result(path):
     d = np.load(path)
     cell, scale, angle, bad, vol, em, ex, e99, res = d['scalars']
-    return relief.Result(d['verts'], d['tris'], d['vcolors'] if 'vcolors' in d else None, d['grid'], float(cell),
+    r = relief.Result(d['verts'], d['tris'], d['vcolors'] if 'vcolors' in d else None, d['grid'], float(cell),
                          float(scale), float(angle), int(bad), float(vol), float(em), float(ex), str(d['mode']),
                          float(e99), float(res), xform=d['xform'] if 'xform' in d else None,
                          dev=d['dev'] if 'dev' in d else None, hollow=bool(d['hollow']) if 'hollow' in d else False,
                          zclip=tuple(d['zclip']) if 'zclip' in d else None,
                          corner=bool(d['corner']) if 'corner' in d else False)
+    if 'detail_zones' in d:
+        import json
+        r.detail_zones = json.loads(str(d['detail_zones']))
+        r.detail_xform, r.detail_res = d['detail_xform'], float(d['detail_res'])
+    return r
 
 
 def main(ply, params_json, out):

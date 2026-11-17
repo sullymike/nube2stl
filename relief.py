@@ -1410,6 +1410,7 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
             r = _reconstruct_25d(hm, prm, log, back)
         r.res = hm.res
     rf = getattr(r, 'detail_res', None)         # zonas de detalle (lo pone el modo; el realce rehace el Result)
+    xf = r.xform                                # nube -> pieza, antes de los acabados
     if prm.mode != 'alturas':                   # en el mapa de alturas ya se ha hecho (_boost)
         r = _boost_result(r, prm, log)
     color = r.vcolors is not None
@@ -1442,6 +1443,8 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
         if r is not r0 and r0.dev is not None:  # hueco, agujeros y letras: superficie añadida (sin escaneo)
             import desviacion
             r.dev = desviacion.transfer(r0, r)
+    if rf and xf is not None:                   # para pintarlas sobre la malla (zone_on_mesh)
+        r.detail_zones, r.detail_xform, r.detail_res = [dict(z) for z in prm.detail], xf, rf
     depth = r.relief_depth
     nl = depth / prm.layer if prm.layer > 0 else 0
     if is_real(prm):                            # copia sin impresora: ni capas ni impresora
@@ -1788,6 +1791,17 @@ def simplify_zoned(r, tol_out, tol_in, inside, log=lambda s: None):
     log(f'Simplificada: {n0:,} -> {len(cur[1]):,} triángulos ({len(cur[1]) / n0 * 100:.1f} %), '
         f'error medio {err[0]:.3g} mm, p99 {err[1]:.3g} mm, máximo {err[2]:.3g} mm')
     return _simplified(r, cur, err)
+
+
+def zone_on_mesh(r, verts=None):
+    """Vértices de la pieza (r.verts o verts, en mm de la pieza) que caen en sus zonas de detalle, o None si la
+    pieza no tiene zonas. Se llevan a la nube con la inversa de r.xform y se mira como en la nube (zone_mask)."""
+    zones, T = getattr(r, 'detail_zones', None), getattr(r, 'detail_xform', None)
+    if not zones or T is None:
+        return None
+    V = np.asarray(r.verts if verts is None else verts, np.float64)
+    Ti = np.linalg.inv(np.asarray(T, np.float64))
+    return zone_mask(V @ Ti[:3, :3].T + Ti[:3, 3], zones)
 
 
 def _simplified(r, out, err):

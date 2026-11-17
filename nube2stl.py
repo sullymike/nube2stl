@@ -454,6 +454,22 @@ def plan_html_real(st, prm, pl):
     return txt + warn
 
 
+def zone_text(r):
+    """Resumen de las zonas de detalle de una pieza: su parte de los triángulos y el tamaño de estos, dentro y
+    fuera (con la malla entera, no la ligera de la vista)."""
+    z = relief.zone_on_mesh(r)
+    if z is None or not z.any():
+        return ''
+    fz = z[r.tris].any(1)
+    V = r.verts[r.tris]
+    edge = np.linalg.norm(V[:, 1] - V[:, 0], axis=1)
+    f = lambda x: f'{x:.2g}'.replace('.', ',')                            # noqa: E731
+    txt = f'zonas: {fz.sum():,} triángulos ({100 * fz.mean():.0f} %)'.replace(',', '.')
+    if fz.any() and (~fz).any():
+        txt += f' · lado medio {f(np.median(edge[fz]))} mm (fuera, {f(np.median(edge[~fz]))} mm)'
+    return txt
+
+
 def plan_html(st, prm):
     """Resumen del cálculo de impresión (lo usan la pestaña Tamaño y el asistente)."""
     return _plan_html(st, prm) + detail_html(st, prm)
@@ -3882,8 +3898,12 @@ class MainWindow(QMainWindow):
         dst = desviacion.stats(r)
         txt = (f'media {dst["mean"]:.2f} · p95 {dst["p95"]:.2f} mm · {dst["covered"]:.0f} % escaneada'
                .replace('.', ',') if dst else '')
+        zone, ztxt = relief.zone_on_mesh(r, verts), ''
+        if zone is not None:
+            ztxt = zone_text(r)
         self.mesh_view.show_mesh((verts - ctr).astype(np.float32), faces, smooth=r.mode in ('objeto', 'bloque'),
-                                 dev=dev, dev_auto=desviacion.auto_limit(r), dev_text=txt, scale=r.scale)
+                                 dev=dev, dev_auto=desviacion.auto_limit(r), dev_text=txt, scale=r.scale,
+                                 zone=zone, zone_text=ztxt)
 
     @staticmethod
     def _preview_mesh(r):

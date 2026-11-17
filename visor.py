@@ -505,6 +505,7 @@ class Viewer3D(QWidget):
             self.opts['edges'] = ch
         lay.addWidget(bar)
         self.dev = None
+        self.zone = None                         # malla: vértices de las zonas de detalle
         if kind == 'malla':
             lay.addWidget(self._tools_bar(colors))
         lay.addWidget(self.view, 1)
@@ -541,7 +542,9 @@ class Viewer3D(QWidget):
         cb.setToolTip('Desviación: cuánto se separa la pieza del escaneo en cada punto (mm de la pieza).\n'
                       'Azul: a la pieza le falta material (aristas redondeadas, detalle perdido).\n'
                       'Rojo: le sobra (huecos rellenados, alisado). Blanco: coincide.\n'
-                      'Gris: no hay escaneo cerca (base, trasera, paredes y tapas que añade el programa).')
+                      'Gris: no hay escaneo cerca (base, trasera, paredes y tapas que añade el programa).\n'
+                      'Zonas de detalle (si la pieza las tiene): en naranja la parte hecha con más resolución;\n'
+                      'con «Triángulos» se ve la diferencia de tamaño de los triángulos.')
         bl.addWidget(cb)
         self.color_cb = cb
         sc = QComboBox()
@@ -555,6 +558,9 @@ class Viewer3D(QWidget):
         self.dev_info = QLabel('')
         self.dev_info.setStyleSheet(f'color: {colors["muted"]}; font-size: 8pt;')
         bl.addWidget(self.dev_info)
+        self.zone_info = QLabel('')
+        self.zone_info.setStyleSheet(f'color: {colors["muted"]}; font-size: 8pt;')
+        bl.addWidget(self.zone_info)
         self.dev_widgets = [sc, self.legend, self.dev_info]
         self._spacer = QWidget()
         self._spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -589,13 +595,21 @@ class Viewer3D(QWidget):
         self._sync_tools()
         return bar
 
+    ZONE_COLOR = (0.93, 0.48, 0.15)
+
     def _sync_tools(self):
         have = self.dev is not None and np.isfinite(self.dev).any()
-        if not have and self.color_cb.currentText() != 'piedra':
+        zone = getattr(self, 'zone', None) is not None and self.zone.any()
+        items = ['piedra'] + (['desviación'] if have else []) + (['zonas de detalle'] if zone else [])
+        cur = self.color_cb.currentText()
+        if [self.color_cb.itemText(i) for i in range(self.color_cb.count())] != items:
             self.color_cb.blockSignals(True)
-            self.color_cb.setCurrentText('piedra')
+            self.color_cb.clear()
+            self.color_cb.addItems(items)
+            self.color_cb.setCurrentText(cur if cur in items else 'piedra')
             self.color_cb.blockSignals(False)
-        self.color_cb.setEnabled(have)
+        self.color_cb.setEnabled(len(items) > 1)
+        self.zone_info.setVisible(zone and self.color_cb.currentText() == 'zonas de detalle')
         on = have and self.color_cb.currentText() == 'desviación'
         for w in self.dev_widgets:
             w.setVisible(on)
@@ -753,16 +767,27 @@ class Viewer3D(QWidget):
                 self.group_clicked.emit(int(grp[idx[np.argmin(d2 + 1e3 * (nz[idx] - nz[idx].min()))]]))
                 return
 
-    def show_mesh(self, verts, faces, smooth=None, dev=None, dev_auto=0.5, dev_text='', scale=None):
+    def show_mesh(self, verts, faces, smooth=None, dev=None, dev_auto=0.5, dev_text='', scale=None, zone=None,
+                  zone_text=''):
         """verts ya colocados (base en z=0, centrada en XY). smooth: marcar o no «Suave» (None = dejarlo).
         dev: desviación por vértice (mm, NaN sin escaneo) para el color «desviación».
-        scale: factor nube -> pieza, para dar también los mm reales al medir."""
+        scale: factor nube -> pieza, para dar también los mm reales al medir.
+        zone: vértices de las zonas de detalle (bool), para el color «zonas de detalle»; con zonas nuevas se elige
+        ese color, para que se vean nada más generar."""
+        new_zone = zone is not None and zone.any() and getattr(self, 'zone', None) is None
         self.dev, self.dev_auto = dev, dev_auto
+        self.zone = zone if zone is not None and zone.any() else None
+        self.zone_info.setText(zone_text)
         self.measure_scale = scale
         self.measure = []
         self.measure_lbl.setText('clic en el primer punto' if self.measure_btn.isChecked() else '')
         self.dev_info.setText(dev_text)
         self._sync_tools()
+        if new_zone:
+            self.color_cb.blockSignals(True)
+            self.color_cb.setCurrentText('zonas de detalle')
+            self.color_cb.blockSignals(False)
+            self._sync_tools()
         if smooth is not None:
             self.opts['smooth'].blockSignals(True)
             self.opts['smooth'].setChecked(smooth)
@@ -802,6 +827,9 @@ class Viewer3D(QWidget):
                 lim = self.dev_limit()
                 self.legend.set_limit(lim)
                 vcol = np.c_[desviacion.colors(self.dev, lim) / 255.0, np.ones(len(P))].astype(np.float32)
+            elif self.color_cb.currentText() == 'zonas de detalle' and getattr(self, 'zone', None) is not None:
+                vcol = np.tile(np.array(stone, np.float32), (len(P), 1))
+                vcol[self.zone, :3] = self.ZONE_COLOR
             line = None
             if self.cut_cb.isChecked():
                 a = 'XYZ'.index(self.cut_axis.currentText())

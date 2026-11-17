@@ -398,11 +398,20 @@ que el resto.
     zonas (`stats['detail_frac']`, medido sobre la nube).
   - Medido (prueba `ZonasDetalle3D`): esfera de 100 mm con bultitos de 0,8 mm, celda general 4 mm y zona a 1 mm:
     error en la zona 0,38 → 0,08 mm, fuera igual (0,40), 2.000 → 8.400 triángulos.
-  - Pendiente: zonas en el mapa de alturas; pintarlas también en la malla.
+  - En la malla: Color › «zonas de detalle» (naranja; se elige sola la primera vez). La pieza guarda sus zonas y la
+    matriz nube → pieza de antes de los acabados (`detail_zones`, `detail_xform`, también en el .npz del proceso
+    aparte); `relief.zone_on_mesh` lleva los vértices a la nube y aplica la misma máscara. Comprobado en objeto, 3d
+    y bloque (los vértices vuelven a la nube a < 0,5 mm de mediana).
+  - Pendiente: zonas en el mapa de alturas.
 
 ---
 
 ## Ideas para después (sin estudiar)
+
+- **Fallo visto el 17-11-2026 (ya estaba en 0.22):** el bloque de ejemplo con «Resolución» manual 2,5 (el escaneo
+  da 0,92) sale de 200 × 200 en vez de 200 × 142 y con 6 aristas abiertas; con 4, de 107 mm de alto y 24 abiertas.
+  En automático sale bien. Parece geometría que Poisson inventa por detrás o en los laterales cuando la celda es
+  mucho más gruesa que el escaneo. Mirarlo.
 
 - Copia a tamaño real como superficie abierta (sin base), y por trozos para piezas que ni Poisson con 12 niveles
   cubre al detalle del escaneo.

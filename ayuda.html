@@ -236,7 +236,8 @@ y <i>Perfil</i>. En la nube: <i>Arriba</i>, <i>Frente</i> y <i>Lado</i>.</p>
       nube ocupan, y la memoria prevista las cuenta. Se pueden marcar varias, desde vistas distintas;
       <i>Deshacer</i> quita la última zona o el último recorte, lo último que se haya hecho. Se guardan con los
       ajustes y en el registro. En una prueba con una esfera con bultitos de 0,8 mm (celda general de 4 mm, zona a
-      1 mm), el error dentro de la zona bajó de 0,38 a 0,08 mm y fuera quedó igual.</li>
+      1 mm), el error dentro de la zona bajó de 0,38 a 0,08 mm y fuera quedó igual. Después de generar, en la malla,
+      <i>Color › zonas de detalle</i> enseña dónde han quedado.</li>
   <li><b>Malla, Luz:</b> <i>rasante móvil</i> es una luz baja desde la izquierda de la pantalla que gira contigo, así que
       siempre marca el relieve de lo que miras. <i>Frontal</i> ilumina de frente y no deja zonas en sombra.
       <i>Rasante fija</i> está fija en la pieza, como una foto con luz rasante.</li>
@@ -248,6 +249,11 @@ y <i>Perfil</i>. En la nube: <i>Arriba</i>, <i>Frente</i> y <i>Lado</i>.</p>
       queda por debajo.</li>
   <li><b>Malla, Color: desviación</b> (<a href="#desviacion">mapa de desviación</a>): colorea cada punto de la pieza según
       lo que se separa del escaneo. Al lado, la escala (automática o fija) y el resumen.</li>
+  <li><b>Malla, Color: zonas de detalle</b> (solo si la pieza tiene <a href="#zona-detalle">zonas de detalle</a>): pinta
+      en naranja la parte hecha con más resolución. Se elige sola la primera vez que se genera una pieza con zonas. Al
+      lado dice cuántos triángulos caen en las zonas y el lado medio de los triángulos dentro y fuera; con
+      <i>Triángulos</i> marcado se ve la diferencia. La zona atraviesa la pieza en la dirección desde la que se
+      dibujó, así que también se pinta lo que quede detrás en esa dirección.</li>
   <li id="medir"><b>📏 Medir</b> (nube y malla): con el botón marcado, haz clic en un punto y después en otro. Al lado se
       ve la distancia y lo que avanza en cada eje (Δx, Δy, Δz). En la <b>nube</b>, en mm reales del original; en la
       <b>malla</b>, en mm de la pieza impresa y, al lado, los mm reales que corresponden según la escala. Un tercer
