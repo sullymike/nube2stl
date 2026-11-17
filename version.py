@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.22.0'
+__version__ = '0.23.0'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,16 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.23.0', 'noviembre 2026', [
+        'Recorte con lazo: junto a ✂ Recortar se elige rectángulo o lazo; el lazo se dibuja a mano alzada alrededor '
+        'de lo que interesa y se cierra al soltar',
+        'Zonas de detalle: en el mismo desplegable del recorte, «zona de detalle» marca una parte de la nube (en '
+        'naranja) que se hace con más resolución que el resto, sin que la pieza entera cueste más. Dentro, la celda '
+        'de «Resolución de las zonas» (Avanzado › Malla; por defecto, la del escaneo); Poisson se afina solo ahí y '
+        'la simplificación usa allí un error admisible más fino. Para los tipos con Poisson (objeto, terreno, '
+        'bloque, 3d); el plan de Tamaño y la memoria prevista las cuentan. En una prueba, el error en la zona bajó '
+        'de 0,38 a 0,08 mm',
+    ]),
     ('0.22.0', 'noviembre 2026', [
         'Copia sin impresora: dos botones arriba del panel Parámetros, «Imprimir una réplica» y «Copia sin '
         'impresora». La segunda hace una copia para archivo, fresado, gran formato o medir, a tamaño real o a la '

@@ -214,13 +214,29 @@ y <i>Perfil</i>. En la nube: <i>Arriba</i>, <i>Frente</i> y <i>Lado</i>.</p>
   <li><b>Nube:</b> <i>Puntos</i> cambia el tamaño de los puntos (1–5 px). Se dibuja hasta un millón de puntos. Los
       grupos sueltos salen en rojo (clic para conservarlos) y lo recortado en gris claro.</li>
   <li id="recorte"><b>Nube, ✂ Recortar:</b> con el botón marcado, arrastra un rectángulo sobre la vista y se queda solo
-      lo de dentro (o se quita, según el desplegable de al lado). El rectángulo corta en la dirección en que miras,
+      lo de dentro (o se quita, según el desplegable de al lado). En vez del rectángulo se puede elegir el
+      <b>◌ lazo</b>: con el botón del ratón pulsado se dibuja a mano alzada el contorno de lo que interesa (una
+      figura, un edificio, un tramo de muralla) y al soltar se cierra solo. El rectángulo o el lazo cortan en la
+      dirección en que miras,
       atravesando toda la nube: gira antes la vista para que lo que quieres quede separado de lo demás (desde arriba
       para una franja de terreno, de lado para quitar el suelo bajo una estatua). Se pueden encadenar varios recortes
       desde vistas distintas; <i>Deshacer</i> quita el último y <i>Sin recortes</i>, todos. La cámara no se mueve.
       Los recortes se guardan con los ajustes y en el registro de piezas, así que «Repetir» los vuelve a aplicar
       (al abrir otra nube o procesar un lote se empieza sin ninguno). Es lo que antes había que hacer en CloudCompare
       con <i>Segment</i>.</li>
+  <li id="zona-detalle"><b>Nube, zona de detalle:</b> la tercera opción del desplegable del recorte. Lo que queda dentro
+      del rectángulo o del lazo <b>no se quita</b>: se tiñe de naranja y ahí la pieza se hace con más resolución que en
+      el resto (por ejemplo, una inscripción o un escudo en una pared grande, o la cara de una estatua). Fuera se usa
+      la resolución normal, así que la pieza no cuesta mucho más memoria ni tiempo que sin la zona. Cómo se hace:
+      dentro de la zona la nube se submuestrea a la celda fina (<a href="#p-detail_res">Resolución de las zonas</a>,
+      por defecto la del escaneo) y fuera a la normal; Poisson sube la profundidad del octree, que solo se afina donde
+      hay puntos densos, es decir, en la zona; y al simplificar se pasa dos veces, fuera con el error admisible normal
+      y dentro con uno proporcional a la celda fina. Solo en los tipos con Poisson (objeto, terreno, bloque, 3d), no
+      en el mapa de alturas. El plan de la pieza (pestaña Tamaño) dice cuántas zonas hay, su celda y qué parte de la
+      nube ocupan, y la memoria prevista las cuenta. Se pueden marcar varias, desde vistas distintas;
+      <i>Deshacer</i> quita la última zona o el último recorte, lo último que se haya hecho. Se guardan con los
+      ajustes y en el registro. En una prueba con una esfera con bultitos de 0,8 mm (celda general de 4 mm, zona a
+      1 mm), el error dentro de la zona bajó de 0,38 a 0,08 mm y fuera quedó igual.</li>
   <li><b>Malla, Luz:</b> <i>rasante móvil</i> es una luz baja desde la izquierda de la pantalla que gira contigo, así que
       siempre marca el relieve de lo que miras. <i>Frontal</i> ilumina de frente y no deja zonas en sombra.
       <i>Rasante fija</i> está fija en la pieza, como una foto con luz rasante.</li>
@@ -1122,7 +1138,14 @@ Valores medidos con <code>lateral3</code> a 200 mm: con un 10 %, error medio de 
 En modo automático se elige para que coincida con la resolución, con un máximo de 11. Cada nivel adicional duplica el detalle
 y multiplica la memoria por 3 o 4. Referencias medidas: <code>lateral3</code> (1,3 m, profundidad 10) tarda 36 s y usa 3 GB;
 <code>lateral2</code> (2,3 m, profundidad 11) tarda 2 min y usa 8,7 GB. Si el programa se cierra por falta de memoria, baja
-la profundidad (9 o 10) o aumenta la resolución.</p>
+la profundidad (9 o 10) o aumenta la resolución. Con <a href="#zona-detalle">zonas de detalle</a> se calcula para la
+celda de las zonas, con un máximo de 12.</p>
+
+<h3 id="p-detail_res">Resolución de las zonas</h3>
+<p class="def">Solo modos 3d, bloque y objeto (también terreno) · 0 = la del escaneo</p>
+<p>Celda dentro de las <a href="#zona-detalle">zonas de detalle</a>, en las mismas unidades que <i>Resolución</i>. Si no
+es más fina que la resolución general, las zonas no cambian nada (el plan lo avisa). Al imprimir, más fina que media
+boquilla no se ve en la pieza; tiene sentido sobre todo en las copias sin impresora o en piezas grandes.</p>
 
 <p class="ej"><b>Valores de ejemplo:</b> Automática · 9–10 para pruebas rápidas · 11 o más solo con 16 GB de memoria.</p>
 <h3 id="p-front_pct">Percentil del frente</h3>
@@ -1398,6 +1421,8 @@ las pérdidas, de mayor a menor importancia:</p>
   <li><b><a href="#p-target">Copia a tamaño real</a></b> (1:1, sin impresora; detalle y simplificación en mm reales
       según el <a href="#p-use">uso</a>), unidades dudosas preguntadas al abrir y
       <a href="#p-behind">Profundidad máx.</a> automática.</li>
+  <li><b><a href="#recorte">Recorte con lazo</a></b> y <b><a href="#zona-detalle">zonas de detalle</a></b>: una parte de
+      la pieza con más resolución que el resto (tipos con Poisson). Falta hacerlo en el mapa de alturas.</li>
 </ul>
 
 <h3>Unir las caras de los laterales de ejemplo</h3>

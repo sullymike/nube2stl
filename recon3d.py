@@ -53,9 +53,12 @@ def reconstruct3d(hm, prm, log=lambda s: None):
     pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(P))
     if col is not None:
         pc.colors = o3d.utility.Vector3dVector(col.astype(np.float64))
-    pc = pc.voxel_down_sample(res)
+    fine = hm.fine[ok] if getattr(hm, 'fine', None) is not None else None
+    rf = relief.zone_res(prm, res, hm.res_scan) if fine is not None else None
+    pc = relief.zoned_voxels(o3d, pc, fine if rf else None, res, rf)
     pc, _ = pc.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.5)
-    log(f'Submuestreo a {res:g} y limpieza: {len(pc.points):,} puntos')
+    log(f'Submuestreo a {res:g}' + (f' ({rf:.3g} en las zonas de detalle)' if rf else '')
+        + f' y limpieza: {len(pc.points):,} puntos')
     pc.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=3 * res, max_nn=30))
     # todo lo escaneado se vio desde delante: las normales deben apuntar hacia +Z (hacia el escáner)
     pc.orient_normals_to_align_with_direction(np.array([0.0, 0.0, 1.0]))
@@ -100,7 +103,7 @@ def reconstruct3d(hm, prm, log=lambda s: None):
 
     # ---------------- Poisson
     ext = np.ptp(np.asarray(allpc.points), 0).max()
-    depth = prm.poisson_depth or int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, 11))
+    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, rf or res, ext=ext)
     if depth >= 11:
         log(f'AVISO: profundidad {depth} con {len(allpc.points):,} puntos puede necesitar 6–10 GB de memoria y '
             f'varios minutos. Si falta memoria, aumenta la resolución o fija una profundidad menor.')
@@ -132,9 +135,11 @@ def reconstruct3d(hm, prm, log=lambda s: None):
         vol = -vol
     log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {relief.fmt_vol(vol)}')
     out = np.where(mask, (np.where(mask & ~outside, top, floor) - zb) * s, np.nan)
-    return relief.Result(verts, tris, vcol, out, res * s, s, hm.ang, bad, vol, mode='3d',
-                         xform=relief.grid_to_piece(hm, s, prm.z_scale, (0, 0, prm.base), floor),
-                         zclip=(prm.base - 0.5 * res * s, np.inf))
+    r = relief.Result(verts, tris, vcol, out, res * s, s, hm.ang, bad, vol, mode='3d',
+                      xform=relief.grid_to_piece(hm, s, prm.z_scale, (0, 0, prm.base), floor),
+                      zclip=(prm.base - 0.5 * res * s, np.inf))
+    r.detail_res = rf
+    return r
 
 
 def _poisson_meshlab(pc, depth, threads=relief.NCORES):

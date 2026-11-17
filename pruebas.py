@@ -65,6 +65,18 @@ def quiet(*a, **k):
     pass
 
 
+def apart(test):
+    """pymeshlab no se puede cargar después de PyQt5 (choque de librerías de Qt; la ventana genera en otro proceso).
+    Si otra prueba ya ha cargado la ventana, esta se repite sola en un proceso nuevo. Devuelve True si se ha hecho
+    así (y entonces la prueba ya está comprobada)."""
+    if 'PyQt5.QtWidgets' not in sys.modules:
+        return False
+    name = f'{type(test).__name__}.{test._testMethodName}'
+    r = subprocess.run([sys.executable, os.path.abspath(__file__), name], capture_output=True, text=True)
+    test.assertEqual(r.returncode, 0, r.stderr[-3000:])
+    return True
+
+
 # ------------------------------------------------------------------ rápidas
 class Formatos(unittest.TestCase):
     """Cada formato de entrada se lee con los mismos puntos y colores."""
@@ -1090,6 +1102,108 @@ class Coherencia(unittest.TestCase):
 
 
 
+class ZonasDetalle(unittest.TestCase):
+    """Zonas de detalle: una parte de la nube se hace con más resolución que el resto (tipos con Poisson)."""
+
+    @staticmethod
+    def zone():
+        """Zona vista desde arriba (pantalla = x/150, y/150): un lazo en forma de triángulo, a la derecha."""
+        M = np.eye(4)
+        M[:3, :3] /= 150
+        return {'M': M.ravel().tolist(), 'poly': [[0.2, -0.4], [0.9, 0.0], [0.2, 0.4]]}
+
+    def test_mascara_del_lazo(self):
+        xyz = np.random.default_rng(0).uniform(-150, 150, (50_000, 3))
+        m = relief.zone_mask(xyz, [self.zone()])
+        x, y = xyz[:, 0] / 150, xyz[:, 1] / 150
+        ref = (x >= 0.2) & (np.abs(y) <= 0.4 * (0.9 - x) / 0.7)       # dentro del triángulo
+        self.assertGreater((m == ref).mean(), 0.999)               # (salvo los que caen justo en el borde)
+        self.assertFalse(relief.zone_mask(xyz, []).any())
+
+    def test_solo_con_poisson(self):
+        z = [self.zone()]
+        self.assertTrue(relief.has_detail(relief.Params(mode='objeto', detail=z)))
+        self.assertTrue(relief.has_detail(relief.Params(mode='bloque', detail=z)))
+        self.assertFalse(relief.has_detail(relief.Params(mode='alturas', detail=z)))
+        self.assertFalse(relief.has_detail(relief.Params(mode='objeto')))
+        # resolución de las zonas: la del escaneo si no se da; nada si no es más fina que la general
+        p = relief.Params(mode='objeto', detail=z)
+        self.assertEqual(relief.zone_res(p, 2.0, 0.5), 0.5)
+        self.assertIsNone(relief.zone_res(p, 0.5, 0.5))
+        p.detail_res = 1.0
+        self.assertEqual(relief.zone_res(p, 2.0, 0.5), 1.0)
+
+    def test_memoria_cuenta_las_zonas(self):
+        st = relief.face_stats(rock(n=60_000), relief.Params(mode='objeto'))
+        p = relief.Params(mode='objeto', target='real', res=4.0)
+        base = relief.memory_estimate(st, p, 60_000)['cells']
+        q = relief.Params(mode='objeto', target='real', res=4.0, detail=[self.zone()], detail_res=1.0)
+        st['detail_frac'] = 0.1
+        zoned = relief.memory_estimate(st, q, 60_000)['cells']
+        self.assertGreater(zoned, 1.5 * base)                      # 10 % de la superficie con 16 veces más celdas
+        self.assertLess(zoned, 3 * base)
+
+    def test_simplificar_por_zonas(self):
+        """Fuera de la zona se simplifica con la tolerancia general; dentro, con la fina (quedan más triángulos)."""
+        if apart(self):
+            return
+        import open3d as o3d
+        m = o3d.geometry.TriangleMesh.create_sphere(100.0, 120)
+        V, T = np.asarray(m.vertices), np.asarray(m.triangles)
+        r = relief.Result(V, T, None, None, 1.0, 1.0, 0, 0, relief._volume(V, T), mode='objeto')
+        inside = lambda v: v[:, 0] > 50                                     # noqa: E731
+        out = relief.simplify_zoned(r, 1.0, 0.05, inside, quiet)
+        self.assertLess(len(out.tris), len(T))
+        self.assertEqual(relief._bad_edges(out.tris, len(out.verts)), 0)    # sigue cerrada
+        c, c0 = out.verts[out.tris].mean(1), V[T].mean(1)
+        a_in = (c[:, 0] > 60).sum() / (c0[:, 0] > 60).sum()           # parte que queda de cada lado
+        a_out = (c[:, 0] < 40).sum() / (c0[:, 0] < 40).sum()
+        self.assertGreater(a_in, 3 * a_out)                        # en la zona se conserva mucho más
+
+    def test_ajustes_y_plan(self):
+        import nube2stl
+        p = relief.Params(mode='objeto', detail=[self.zone()], detail_res=0.5)
+        self.assertEqual(relief.Params.from_json(p.to_json()), p)
+        st = relief.face_stats(rock(n=30_000), p)
+        st['detail_frac'] = 0.2
+        self.assertIn('Zonas de detalle', nube2stl.plan_html(st, p))
+        p.mode = 'alturas'
+        self.assertIn('solo cuentan', nube2stl.plan_html(st, p))
+
+
+class ZonasDetalle3D(unittest.TestCase):
+    """Reconstrucción con una zona de detalle: dentro sale mucho más fiel, fuera igual."""
+
+    def test_objeto_con_zona(self):
+        if apart(self):
+            return
+        rng = np.random.default_rng(0)
+        n = 300_000
+        u, th = rng.uniform(0, 2 * np.pi, n), np.arccos(rng.uniform(-1, 1, n))
+        R = 100 + 0.8 * np.sin(60 * u) * np.sin(60 * th)               # bultitos de 0,8 mm, cada ~5 mm
+        xyz = np.c_[R * np.sin(th) * np.cos(u), R * np.sin(th) * np.sin(u), R * np.cos(th)].astype(np.float32)
+        M = np.eye(4)
+        M[:3, :3] /= 150
+        zone = {'M': M.ravel().tolist(), 'poly': [[0.2, -0.3], [0.8, -0.3], [0.8, 0.3], [0.2, 0.3]]}
+        zin = relief.zone_mask(xyz, [zone])
+        import open3d as o3d
+        err = []
+        for det in ([], [zone]):
+            p = relief.Params(mode='objeto', target='real', res=4.0, denoise=0, detail=det, detail_res=1.0)
+            r = relief.reconstruct(xyz, p)
+            self.assertEqual(r.bad_edges, 0)
+            Ti = np.linalg.inv(r.xform)
+            V = (r.verts @ Ti[:3, :3].T + Ti[:3, 3]).astype(np.float32)
+            sc = o3d.t.geometry.RaycastingScene()
+            sc.add_triangles(o3d.core.Tensor(V), o3d.core.Tensor(r.tris.astype(np.uint32)))
+            d = sc.compute_distance(o3d.core.Tensor(xyz)).numpy()
+            err.append((d[zin].mean(), d[~zin].mean(), len(r.tris)))
+        (zin0, out0, n0), (zin1, out1, n1) = err
+        self.assertLess(zin1, 0.4 * zin0)              # en la zona, el error baja a menos de la mitad (≈ 5 veces)
+        self.assertLess(out1, 1.3 * out0)              # fuera, como sin zona
+        self.assertLess(n1, 10 * n0)                   # y la malla no se dispara: solo crece en la zona
+
+
 class TamanoReal(unittest.TestCase):
     """Destino «Tamaño real» (copia 1:1), «Profundidad máx.» automática y unidades dudosas."""
 
@@ -1224,7 +1338,7 @@ if __name__ == '__main__':
         sys.argv.pop(1)
         suite = unittest.TestSuite()
         for c in (Formatos, Unidades, Limpieza, Escala, Acabado, Ficha, Desviacion, Corte, Formato3MF, Registro,
-                  Recorte, Superficies, Ejemplos, Union, GuardarUnion, Novedades, Esquinas, Realce, MemoriaEscalaReal, TamanoReal, Actualizar,
+                  Recorte, Superficies, Ejemplos, Union, GuardarUnion, Novedades, Esquinas, Realce, MemoriaEscalaReal, TamanoReal, ZonasDetalle, Actualizar,
                   Coherencia):
             suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(c))
         setUpModule()

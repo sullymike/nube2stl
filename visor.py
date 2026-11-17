@@ -12,7 +12,7 @@ el búfer de profundidad: funciona igual con cualquier controlador gráfico.
 import numpy as np
 from OpenGL import GL
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QLinearGradient, QPainter, QVector3D
+from PyQt5.QtGui import QColor, QLinearGradient, QPainter, QPen, QPolygonF, QVector3D
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QLabel, QSizePolicy, QSlider, QToolButton,
                              QVBoxLayout, QWidget)
 import pyqtgraph.opengl as gl
@@ -58,16 +58,39 @@ def fmt_mm(x):
     return f'{x:.{dec}f}'.replace('.', ',')
 
 
+class _LassoOverlay(QWidget):
+    """Trazo del lazo encima de la vista 3D (no recibe el ratón)."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_NoSystemBackground)
+        self.pts = []
+
+    def paintEvent(self, ev):
+        if len(self.pts) < 2:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        poly = QPolygonF(self.pts)
+        p.setBrush(QColor(224, 122, 63, 40))
+        p.setPen(QPen(QColor(224, 122, 63), 2))
+        p.drawPolygon(poly)
+
+
 class NavView(gl.GLViewWidget):
     clicked = pyqtSignal(QPointF)          # clic izquierdo sin arrastrar (no se emite si es parte de un doble clic)
     escaped = pyqtSignal()                 # tecla Esc
     boxed = pyqtSignal(QRectF)             # modo recorte: rectángulo dibujado (píxeles de la vista)
+    lassoed = pyqtSignal(object)           # modo recorte con lazo: [QPointF] (píxeles de la vista)
 
     def __init__(self, bg):
         super().__init__()
         self._click_at = None
         self.crop_mode = False
+        self.crop_shape = 'rect'           # 'rect' | 'lazo'
         self._band = None
+        self._lasso = None
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
         self._click_timer.timeout.connect(lambda: self.clicked.emit(self._click_at))
@@ -202,6 +225,15 @@ class NavView(gl.GLViewWidget):
         self.mousePos = ev.localPos()
         self._press = ev.button()
         self._press_at = ev.localPos()
+        if (self.crop_mode and self.crop_shape == 'lazo' and ev.button() == Qt.LeftButton
+                and not (ev.modifiers() & Qt.ShiftModifier)):
+            if self._lasso is None:
+                self._lasso = _LassoOverlay(self)
+            self._lasso.setGeometry(self.rect())
+            self._lasso.pts = [ev.localPos()]
+            self._lasso.show()
+            self._lasso.raise_()
+            return
         if self.crop_mode and ev.button() == Qt.LeftButton and not (ev.modifiers() & Qt.ShiftModifier):
             from PyQt5.QtWidgets import QRubberBand
             if self._band is None:
@@ -221,6 +253,11 @@ class NavView(gl.GLViewWidget):
         diff = lpos - self.mousePos
         self.mousePos = lpos
         b = ev.buttons()
+        if self._lasso is not None and self._lasso.isVisible():
+            if (lpos - self._lasso.pts[-1]).manhattanLength() >= 3:
+                self._lasso.pts.append(lpos)
+                self._lasso.update()
+            return
         if self._band is not None and self._band.isVisible():
             from PyQt5.QtCore import QRect
             p0 = self._press_at
@@ -234,6 +271,15 @@ class NavView(gl.GLViewWidget):
             self._show_marker(True)
 
     def mouseReleaseEvent(self, ev):
+        if self._lasso is not None and self._lasso.isVisible():
+            pts = self._lasso.pts
+            self._lasso.hide()
+            self._lasso.pts = []
+            self.unsetCursor()
+            if len(pts) >= 3 and QPolygonF(pts).boundingRect().width() > 3 and \
+                    QPolygonF(pts).boundingRect().height() > 3:
+                self.lassoed.emit(pts)
+            return
         if self._band is not None and self._band.isVisible():
             self._band.hide()
             r = QRectF(self._press_at, ev.localPos()).normalized()
@@ -327,7 +373,8 @@ class DevLegend(QWidget):
 class Viewer3D(QWidget):
     """Vista 3D con barra de vistas y opciones encima y la ayuda de navegación debajo."""
     group_clicked = pyqtSignal(int)      # nube: clic sobre un punto de un grupo suelto (número de grupo)
-    crop_drawn = pyqtSignal(object, object, bool)   # nube: recorte (matriz 4×4 de la vista, polígono −1…1, dentro)
+    crop_drawn = pyqtSignal(object, object, str)    # nube: matriz 4×4 de la vista, polígono −1…1 y qué hacer
+                                                    # ('dentro', 'fuera' o 'detalle': zona de detalle, no recorta)
     crop_undo = pyqtSignal()
     crop_clear = pyqtSignal()
     HINT = ('<b>Izq.</b> girar · <b>Der.</b>, <b>central</b> o <b>Mayús+izq.</b> desplazar · <b>Rueda</b> zoom hacia '
@@ -394,28 +441,38 @@ class Viewer3D(QWidget):
             cr.setText('✂ Recortar')
             cr.setCheckable(True)
             cr.setCursor(Qt.PointingHandCursor)
-            cr.setToolTip('Recortar la nube: con esto marcado, arrastra un rectángulo en la vista.\n'
-                          'Se recorta en la dirección en que miras: gira la vista para que lo que quieres quede\n'
-                          'separado de lo demás (p. ej. desde arriba para una franja del terreno). Puedes hacer\n'
-                          'varios recortes seguidos desde vistas distintas. Lo recortado se ve en gris claro.')
+            cr.setToolTip('Recortar la nube o marcar una zona de detalle: con esto marcado, arrastra un rectángulo\n'
+                          'o dibuja un lazo en la vista. Se marca en la dirección en que miras: gira la vista para que\n'
+                          'lo que quieres quede separado de lo demás (p. ej. desde arriba para una franja del terreno).\n'
+                          'Puedes hacer varios seguidos desde vistas distintas. Lo recortado se ve en gris claro y\n'
+                          'las zonas de detalle en naranja.')
             bl.addWidget(cr)
             self.crop_btn = cr
+            sh = QComboBox()
+            sh.addItems(['▭ rectángulo', '◌ lazo'])
+            sh.setToolTip('Forma: rectángulo (arrastrar de una esquina a otra) o lazo (dibujar el contorno a mano\n'
+                          'alzada, con el botón pulsado; al soltar se cierra)')
+            sh.currentIndexChanged.connect(lambda i: setattr(self.view, 'crop_shape', 'lazo' if i else 'rect'))
+            bl.addWidget(sh)
+            self.crop_shape = sh
             cm = QComboBox()
-            cm.addItems(['dejar lo de dentro', 'quitar lo de dentro'])
-            cm.setToolTip('Qué hacer con los puntos que quedan dentro del rectángulo')
+            cm.addItems(['dejar lo de dentro', 'quitar lo de dentro', 'zona de detalle'])
+            cm.setToolTip('Qué hacer con los puntos que quedan dentro:\n'
+                          'dejar o quitar (recorte), o marcarlos como zona de detalle: no se quita nada y ahí la\n'
+                          'pieza se hace con más resolución (tipos con Poisson: objeto, terreno, bloque, 3d)')
             bl.addWidget(cm)
             self.crop_how = cm
             un = QToolButton()
             un.setText('Deshacer')
-            un.setToolTip('Deshacer el último recorte')
+            un.setToolTip('Deshacer el último recorte o zona de detalle')
             un.clicked.connect(self.crop_undo.emit)
             bl.addWidget(un)
             cl = QToolButton()
             cl.setText('Sin recortes')
-            cl.setToolTip('Quitar todos los recortes: vuelve la nube entera')
+            cl.setToolTip('Quitar todos los recortes y las zonas de detalle: vuelve la nube entera')
             cl.clicked.connect(self.crop_clear.emit)
             bl.addWidget(cl)
-            self.crop_tools = [cm, un, cl]
+            self.crop_tools = [sh, cm, un, cl]
             cr.toggled.connect(self._crop_toggled)
             bl.addSpacing(10)
             bl.addWidget(QLabel('Puntos'))
@@ -467,6 +524,7 @@ class Viewer3D(QWidget):
         self.loose = None
         self.view.clicked.connect(self._clicked)
         self.view.boxed.connect(self._boxed)
+        self.view.lassoed.connect(self._lassoed)
         self.view.escaped.connect(self.clear_measure)
 
     def _tools_bar(self, colors):
@@ -646,9 +704,17 @@ class Viewer3D(QWidget):
         self._measure_items = items
 
     def set_crop_state(self, n):
-        """Número de recortes hechos (para activar Deshacer / Sin recortes)."""
-        for w in self.crop_tools[1:]:
+        """Número de recortes y zonas hechos (para activar Deshacer / Sin recortes)."""
+        for w in self.crop_tools[2:]:
             w.setEnabled(n > 0)
+
+    CROP_HOW = ('dentro', 'fuera', 'detalle')
+
+    def _lassoed(self, pts):
+        """Lazo dibujado -> matriz de la vista y polígono en coordenadas −1…1."""
+        w, h = max(self.view.width(), 1), max(self.view.height(), 1)
+        poly = [[2 * q.x() / w - 1, 1 - 2 * q.y() / h] for q in pts]
+        self.crop_drawn.emit(self.view._mvp(), poly, self.CROP_HOW[self.crop_how.currentIndex()])
 
     def _boxed(self, r):
         """Rectángulo dibujado en modo recorte -> matriz de la vista y polígono en coordenadas −1…1."""
@@ -656,7 +722,7 @@ class Viewer3D(QWidget):
         xs = [2 * r.left() / w - 1, 2 * r.right() / w - 1]
         ys = [1 - 2 * r.bottom() / h, 1 - 2 * r.top() / h]
         poly = [[xs[0], ys[0]], [xs[1], ys[0]], [xs[1], ys[1]], [xs[0], ys[1]]]
-        self.crop_drawn.emit(self.view._mvp(), poly, self.crop_how.currentIndex() == 0)
+        self.crop_drawn.emit(self.view._mvp(), poly, self.CROP_HOW[self.crop_how.currentIndex()])
 
     def redraw_extra(self):
         """Volver a dibujar solo los marcadores de extra_items (sin tocar la cámara)."""

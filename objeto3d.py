@@ -252,10 +252,10 @@ def check_file_normals(o3d, pc, log=lambda s: None, n=60_000):
     return True
 
 
-def clean_cloud(pc, res, log=lambda s: None):
+def clean_cloud(pc, res, log=lambda s: None, fine=None, rf=None):
     """Submuestreo a la resolución, puntos sueltos fuera y restos separados de la pieza principal (la mesa, el
-    soporte, nubes de ruido)."""
-    pc = pc.voxel_down_sample(res)
+    soporte, nubes de ruido). fine, rf: zonas de detalle (máscara por punto) y su celda, más fina."""
+    pc = relief.zoned_voxels(recon3d._need_o3d(), pc, fine, res, rf)
     pc, _ = pc.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.5)
     lab = np.asarray(pc.cluster_dbscan(eps=3 * res, min_points=4))
     if lab.size and lab.max() > 0:
@@ -265,7 +265,8 @@ def clean_cloud(pc, res, log=lambda s: None):
             log(f'Quitados {(~keep).sum():,} puntos de {len(cnt) - int((cnt >= 0.02 * cnt.max()).sum())} '
                 f'grupos sueltos')
         pc = pc.select_by_index(np.flatnonzero(keep))
-    log(f'Submuestreo a {res:g} y limpieza: {len(pc.points):,} puntos')
+    log(f'Submuestreo a {res:g}' + (f' ({rf:g} en las zonas de detalle)' if fine is not None and rf else '')
+        + f' y limpieza: {len(pc.points):,} puntos')
     return pc
 
 
@@ -374,7 +375,7 @@ def _top_grid(verts, n=400):
     return g, cell
 
 
-def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=False):
+def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=False, fine=None):
     o3d = recon3d._need_o3d()
     for name, why in (('negative', 'el molde'), ('frame', 'el marco'), ('auto_straighten', 'el enderezado')):
         if getattr(prm, name):
@@ -389,6 +390,12 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=
     s, res = pl['scale'], pl['res']
     log(f'Modo objeto: {len(P):,} puntos; «arriba» = {prm.up}; escala {s:.4f}; resolución {res:.2f} '
         f'({pl["why"]}) → {res * s:.3f} mm en la pieza')
+    rf = relief.zone_res(prm, res, pl['res_scan']) if fine is not None else None
+    if fine is not None and rf is None:
+        log('Zonas de detalle: su resolución no es más fina que la general; se ignoran')
+        fine = None
+    elif rf:
+        log(f'Zonas de detalle a {rf:.3g} ({rf * s:.3g} mm en la pieza)')
 
     pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(P))
     del P
@@ -397,7 +404,7 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=
     have_n = normals is not None and len(normals) == len(p)
     if have_n:
         pc.normals = o3d.utility.Vector3dVector(normals.astype(np.float64) @ M.T)
-    pc = clean_cloud(pc, res, log)
+    pc = clean_cloud(pc, res, log, fine, rf)
     ground = getattr(prm, 'ground', False)
     sk = None
     if ground:              # escaneo abierto por abajo: paredes y base sintéticas (también tapan los rayos de abajo
@@ -466,7 +473,7 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=
     if not okn.all():                       # Poisson no admite normales nulas (puntos repetidos, alisado…)
         pc = pc.select_by_index(np.flatnonzero(okn))
     ext = np.ptp(np.asarray(pc.points), 0).max()
-    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, res, ext=ext)
+    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, rf or res, ext=ext)
     log(f'Poisson apantallado, profundidad {depth} (celda ≈ {ext * 1.1 / 2 ** depth:.2f}), '
         f'{relief.threads_for(prm, "poisson")} hilos…')
     try:
@@ -504,5 +511,7 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=
         f'{sx:.1f} × {sy:.1f} × {sz:.1f} mm')
     grid, cell = _top_grid(verts)
     T = relief.affine(s * M, -s * (M @ c0 + vmin))
-    return relief.Result(verts, tris, vcol, grid, cell, s, prm.angle, bad, vol, mode='objeto', res=res, xform=T,
-                         zclip=(-0.5 * res * s, np.inf) if prm.cut > 0 and not ground else None)
+    r = relief.Result(verts, tris, vcol, grid, cell, s, prm.angle, bad, vol, mode='objeto', res=res, xform=T,
+                      zclip=(-0.5 * res * s, np.inf) if prm.cut > 0 and not ground else None)
+    r.detail_res = rf
+    return r

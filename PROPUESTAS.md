@@ -336,24 +336,27 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
   - La profundidad de Poisson automática no pasa de 11: en piezas de decenas de metros el detalle tiene un suelo de
     centímetros, salvo que se suba a mano (y la memoria crece unas 4 veces por nivel).
 
-## G. Solo una parte de la nube, y más detalle en una zona — *PROPUESTA (17-11-2026)*
+## G. Solo una parte de la nube, y más detalle en una zona — *propuesta 17-11-2026; lazo y zonas con Poisson HECHOS en 0.23.0*
 
 Dos supuestos del usuario: (1) no pasar toda la nube a malla, solo una parte; (2) una parte con más resolución
 que el resto.
 
-### G1. Elegir la parte — *ya existe; mejoras propuestas*
+### G1. Elegir la parte — *lazo HECHO en 0.23.0; el resto, propuesto*
 
 - **Lo que hay.** Nube › ✂ Recortar: un rectángulo en pantalla que atraviesa la nube en la dirección de la vista;
   quedarse con lo de dentro o quitarlo; varios encadenados desde vistas distintas; Deshacer / Sin recortes; se
   guardan en los ajustes y en el registro. Por dentro (`entrada.crop_mask`) cada recorte ya es un **polígono** en
   coordenadas de pantalla con su matriz, no un rectángulo.
 - **Mejoras.**
-  - **Lazo (polígono a mano alzada o por clics)**: solo cambia la vista; los datos ya lo admiten. Esfuerzo: pequeño.
+  - **Lazo — HECHO (0.23.0).** Junto a ✂ Recortar, un desplegable «▭ rectángulo / ◌ lazo». El lazo se dibuja a
+    mano alzada con el botón pulsado (un punto cada 3 px) y se cierra al soltar; se guarda como el polígono del
+    recorte, sin tocar `crop_mask`. Se descartó el lazo por clics: con el arrastre basta y no choca con el doble
+    clic (centrar la vista).
   - **Caja 3D con medidas** (mín./máx. en x, y, z, o alrededor de un punto con un radio): para repetir el mismo
     recorte en otra nube o en otra fecha. Esfuerzo: pequeño–medio.
   - **Quedarse con un grupo** con un clic (como ya se marcan los grupos sueltos). Esfuerzo: pequeño.
 
-### G2. Zona de detalle — *propuesta*
+### G2. Zona de detalle — *HECHA en 0.23.0 para los tipos con Poisson; mapa de alturas pendiente*
 
 - **Qué es.** Marcar una o varias zonas (con el mismo gesto que el recorte: rectángulo o lazo) y darles su
   resolución: la del escaneo o un valor; el resto, a la resolución normal (o más gruesa). Ejemplo: la inscripción de
@@ -377,6 +380,25 @@ que el resto.
   - En impresión, la zona fina no puede bajar de media boquilla: tiene sentido sobre todo en copias sin impresora o
     en piezas grandes donde la resolución la limita la memoria.
   - La simplificación en franjas paralelas tiene que respetar la selección (cada franja con su parte de zona).
+- **Lo que se ha hecho (0.23.0).**
+  - Vista: tercera opción del desplegable del recorte, «zona de detalle» (rectángulo o lazo). No quita puntos: los
+    tiñe de naranja. Deshacer quita lo último hecho, zona o recorte (`_marks`).
+  - Datos: `Params.detail` (lista de {M, poly}, como los recortes) y **una sola** resolución para todas las zonas,
+    `Params.detail_res` (Avanzado › Malla, «Resolución de las zonas»; 0 = la del escaneo). Una resolución por zona
+    complicaba la interfaz sin un caso claro; se puede añadir guardando `res` en cada zona.
+  - `relief.zone_mask`, `zone_res`, `zoned_voxels`: submuestreo con dos celdas en objeto/terreno (`clean_cloud`),
+    3d (`recon3d`) y bloque. La profundidad automática de Poisson se calcula para la celda de la zona, con máximo 12
+    (11 sin zonas).
+  - `relief.simplify_zoned`: dos pasadas con `selected=True`; el error de cada pasada se mide solo con los puntos de
+    su parte. Detalle de PyMeshLab: con `selected=True`, `targetfacenum` cuenta **solo las caras seleccionadas**
+    (la primera versión pedía el total y no simplificaba nada). Va en un solo proceso (sin franjas): el problema de
+    las franjas desaparece.
+  - Plan (Tamaño): nº de zonas, celda (nube y pieza), % de la nube; avisa si no tienen efecto (la general ya es la
+    del escaneo) o si en impresión son más finas que media boquilla. La memoria prevista suma las celdas de las
+    zonas (`stats['detail_frac']`, medido sobre la nube).
+  - Medido (prueba `ZonasDetalle3D`): esfera de 100 mm con bultitos de 0,8 mm, celda general 4 mm y zona a 1 mm:
+    error en la zona 0,38 → 0,08 mm, fuera igual (0,40), 2.000 → 8.400 triángulos.
+  - Pendiente: zonas en el mapa de alturas; pintarlas también en la malla.
 
 ---
 

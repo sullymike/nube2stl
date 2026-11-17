@@ -197,7 +197,10 @@ def preview_params(prm, stats):
     sin simplificar y sin acabados (hueco, rótulo). Misma escala, orientación y método que la definitiva."""
     import copy
     p = copy.copy(prm)
-    p.res = print_plan(stats, prm)['res'] * PREVIEW_FACTOR
+    pl = print_plan(stats, prm)
+    p.res = pl['res'] * PREVIEW_FACTOR
+    if has_detail(prm):                           # las zonas, también más gruesas
+        p.detail_res = (prm.detail_res if prm.detail_res > 0 else pl['res_scan']) * PREVIEW_FACTOR
     p.poisson_depth = 0
     p.simplify = 100.0
     p.wall, p.label = 0.0, ''
@@ -326,6 +329,7 @@ class Params:
     clean: bool = True             # al cargar, quitar grupos de puntos separados de la pieza
     keep_groups: list = field(default_factory=list)   # centros (mm) de grupos sueltos que se conservan (clic en la vista)
     crop: list = field(default_factory=list)          # recortes hechos en la vista de la nube (ver entrada.crop_mask)
+    detail: list = field(default_factory=list)        # zonas de detalle (como los recortes: M, poly), ver zone_mask
     merge: list = field(default_factory=list)         # otras nubes unidas a esta: {'path', 'units', 'M'} (ver unir.py)
     reverse: list = field(default_factory=list)       # pieza de dos caras: el reverso, [{'path', 'units', 'angle'
                                                       # (None = encajar por el contorno), 'shift'}] (ver back_face)
@@ -357,6 +361,7 @@ class Params:
                                    # paredes verticales hasta una base plana de «base» mm bajo el punto más bajo
     denoise: float = 3.0           # modos objeto y bloque: alisado del ruido, radio en separaciones del escaneo (0 = no)
     poisson_depth: int = 0         # profundidad del octree de Poisson (0 = automática)
+    detail_res: float = 0.0        # resolución de las zonas de detalle (0 = la del escaneo)
     simplify: float = 0.0          # % de triángulos a conservar (0 = automático según boquilla, 100 = no)
     workers: int = 0               # procesadores a usar (0 = automático)
 
@@ -833,13 +838,54 @@ def memory_available():
         return None, None
 
 
+DEPTH_MAX, DEPTH_MAX_ZONES = 11, 12   # profundidad automática máxima de Poisson (con zonas de detalle, una más:
+                                      # el octree solo se afina donde hay puntos densos, en la zona)
+
+
 def poisson_depth_auto(stats, prm, res, ext=None):
     """La misma profundidad automática que usan los modos 3D y objeto, a partir del tamaño de la cara (o del
-    objeto, o de ext si se da)."""
+    objeto, o de ext si se da). Con zonas de detalle, res es la de las zonas."""
     if ext is None:
         ext = (max(_object_extents(stats['obj'], prm)) if prm.mode == 'objeto' and 'obj' in stats
                else max(stats['length'], stats['width']))
-    return int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, 11))
+    hi = DEPTH_MAX_ZONES if has_detail(prm) else DEPTH_MAX
+    return int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, hi))
+
+
+# ------------------------------------------------------------------ zonas de detalle
+ZONE_MODES = ('3d', 'objeto', 'bloque')     # los que usan Poisson (el octree se afina solo donde hay puntos densos)
+
+
+def has_detail(prm):
+    """¿Hay zonas de detalle que se aplican? Solo en los tipos con Poisson (no en mapa de alturas ni esquina)."""
+    return bool(getattr(prm, 'detail', None)) and prm.mode in ZONE_MODES and not getattr(prm, 'corner', False)
+
+
+def zone_mask(xyz, zones):
+    """Puntos dentro de alguna zona de detalle (cada zona es un polígono en pantalla con la matriz de la vista,
+    como un recorte: entrada.crop_mask)."""
+    import entrada
+    m = np.zeros(len(xyz), bool)
+    for z in zones or ():
+        m |= entrada.crop_mask(xyz, [dict(z, inside=True)])
+    return m
+
+
+def zone_res(prm, res, res_scan):
+    """Resolución de las zonas de detalle (unidades de la nube), o None si no son más finas que la general."""
+    if not has_detail(prm):
+        return None
+    r = prm.detail_res if prm.detail_res > 0 else res_scan
+    return r if r < 0.99 * res else None
+
+
+def zoned_voxels(o3d, pc, fine, res, rf):
+    """Submuestreo con dos celdas: rf dentro de las zonas (fine, máscara por punto) y res fuera."""
+    if fine is None or rf is None or not fine.any():
+        return pc.voxel_down_sample(res)
+    a = pc.select_by_index(np.flatnonzero(fine)).voxel_down_sample(rf)
+    b = pc.select_by_index(np.flatnonzero(~fine)).voxel_down_sample(res)
+    return a + b
 
 
 def poisson_cell(stats, prm, res):
@@ -856,8 +902,13 @@ def memory_estimate(stats, prm, npoints, avail=None):
     pl = print_plan(stats, prm)
     cells = pl['cells']
     if prm.mode in ('3d', 'objeto', 'bloque'):
-        depth, pcell = poisson_cell(stats, prm, pl['res'])
-        if pcell > pl['res']:                   # en piezas grandes y finas (un acueducto a escala 1) es más gruesa
+        rf = zone_res(prm, pl['res'], pl['res_scan'])
+        depth, pcell = poisson_cell(stats, prm, rf or pl['res'])
+        if rf:                                  # zonas de detalle: su parte de la superficie, a la celda fina
+            frac = float(stats.get('detail_frac', 0.1))
+            cf = max(rf, pcell)
+            cells = cells * (1 - frac) + cells * frac * (pl['res'] / cf) ** 2
+        elif pcell > pl['res']:                 # en piezas grandes y finas (un acueducto a escala 1) es más gruesa
             cells *= (pl['res'] / pcell) ** 2   # que la resolución pedida, y no hay tantas celdas
         per_cell = MEM_PER_CELL_3D.get(depth) or (MEM_PER_CELL_3D[13] if depth > 13
                                                     else MEM_PER_CELL_3D[9] / 1.6 ** (9 - depth))
@@ -1170,7 +1221,8 @@ def _sort_cells(cell, H, ncells, K=NCPU):
         return np.concatenate(list(ex.map(work, range(K))))
 
 
-def heightmap(p, prm: Params, rgb=None, log=lambda s: None):
+def heightmap(p, prm: Params, rgb=None, log=lambda s: None, fine=None):
+    """fine: máscara de los puntos de las zonas de detalle (se guarda en hm.fine, alineada con hm.U)."""
     log(f'{len(p):,} puntos')
     U, V, H, keep = _project(p, prm)
     col = rgb[keep] if rgb is not None else None
@@ -1210,6 +1262,7 @@ def heightmap(p, prm: Params, rgb=None, log=lambda s: None):
 
     hm = HM()
     hm.U, hm.V, hm.H, hm.col, hm.ang, hm.res, hm.res_scan = U, V, H, col, ang, res, plan['res_scan']
+    hm.fine = fine[keep] if fine is not None else None
     hm.grid, hm.mask, hm.cgrid, hm.valid = grid, mask, cgrid, valid
     hm.u0, hm.v0 = u0, v0                                     # esquina de la celda (0,0)
     hm.floor = float(grid[mask].min())
@@ -1327,14 +1380,25 @@ def grid_to_piece(hm, s, zs=1.0, shift=(0, 0, 0), z0=0.0, flipz=False):
 
 
 def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh=False):
+    fine = None
+    if getattr(prm, 'detail', None):
+        if has_detail(prm):
+            fine = zone_mask(p, prm.detail)
+            log(f'Zonas de detalle: {len(prm.detail)} ({fine.sum():,} puntos, {100 * fine.mean():.1f} % de la nube)')
+            if not fine.any():
+                log('AVISO: ningún punto cae en las zonas de detalle')
+                fine = None
+        else:
+            log('AVISO: las zonas de detalle solo se aplican en los tipos con Poisson (3d, bloque, objeto, terreno); '
+                'aquí se ignoran')
     if prm.mode == 'objeto':
         import objeto3d
-        r = objeto3d.reconstruct_object(p, prm, rgb, normals, log, mesh=mesh)
+        r = objeto3d.reconstruct_object(p, prm, rgb, normals, log, mesh=mesh, fine=fine)
     elif prm.mode == 'bloque' and getattr(prm, 'corner', False):
         import esquina
         r = esquina.reconstruct_corner(p, prm, rgb, log)
     else:
-        hm = heightmap(p, prm, rgb, log)
+        hm = heightmap(p, prm, rgb, log, fine=fine)
         if prm.mode == '3d':
             import recon3d
             r = recon3d.reconstruct3d(hm, prm, log)
@@ -1345,11 +1409,19 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
             back = back_face(hm, prm, log) if getattr(prm, 'reverse', None) else None
             r = _reconstruct_25d(hm, prm, log, back)
         r.res = hm.res
+    rf = getattr(r, 'detail_res', None)         # zonas de detalle (lo pone el modo; el realce rehace el Result)
     if prm.mode != 'alturas':                   # en el mapa de alturas ya se ha hecho (_boost)
         r = _boost_result(r, prm, log)
     color = r.vcolors is not None
     log(f'Tamaño del fichero sin simplificar: {sizes_text(len(r.verts), len(r.tris), color)}')
-    if prm.simplify <= 0:
+    if prm.simplify <= 0 and rf and r.xform is not None:          # dos tolerancias: la de las zonas, más fina
+        tol = tolerance(prm, r.res)
+        tol_in = min(tol, REAL_TOL.get(getattr(prm, 'use', 'archivo'), 0.25) * rf * r.scale)
+        Tinv = np.linalg.inv(np.asarray(r.xform, np.float64))
+        inside = lambda v: zone_mask(np.asarray(v, np.float64) @ Tinv[:3, :3].T + Tinv[:3, 3], prm.detail)  # noqa: E731
+        r = simplify_zoned(r, tol, tol_in, inside, log)
+        log(f'Tamaño final: {sizes_text(len(r.verts), len(r.tris), color)}')
+    elif prm.simplify <= 0:
         r = simplify_auto(r, tolerance(prm, r.res), log, threads_for(prm, 'simplify'))
         log(f'Tamaño final: {sizes_text(len(r.verts), len(r.tris), color)}')
     elif prm.simplify < 100:
@@ -1624,11 +1696,12 @@ def _decimate_mesh_n(V, T, vcol, target, workers, log=lambda s: None):
     return out
 
 
-def _mesh_error(V0, T0, V, T, nsamples=400_000):
+def _mesh_error(V0, T0, V, T, nsamples=400_000, pts=None):
     """Distancia de la superficie original a la simplificada: (media, p99, máximo, p99,9), en las unidades de la
     malla. Muestrea vértices y centros de cara originales. Usa Open3D (multihilo) o PyMeshLab si no está."""
     rng = np.random.default_rng(0)
-    pts = np.concatenate([V0, V0[T0].mean(1)])
+    if pts is None:                          # puntos de referencia: vértices y centros de cara originales
+        pts = np.concatenate([V0, V0[T0].mean(1)])
     if len(pts) > nsamples:
         pts = pts[rng.choice(len(pts), nsamples, replace=False)]
     try:
@@ -1646,6 +1719,75 @@ def _mesh_error(V0, T0, V, T, nsamples=400_000):
         h = ms.get_hausdorff_distance(sampledmesh=1, targetmesh=0, samplevert=True, sampleface=True,
                                       samplenum=min(nsamples, len(V0)))
         return h['mean'], h['RMS'] * 2.6, h['max'], h['RMS'] * 3.3   # sin percentiles: aproximación gaussiana
+
+
+def _decimate_selected(V, T, vcol, sel, target):
+    """Simplifica solo las caras sel (bool por cara) hasta que de ellas queden ~target (PyMeshLab cuenta solo las
+    seleccionadas; las demás no se tocan). Con la malla llevada a DECIMATE_SIZE de lado, como _decimate_mesh.
+    -> (verts, tris, vcol) cerrada, o None."""
+    import pymeshlab
+    c = V.mean(0)
+    k = DECIMATE_SIZE / max(float(np.ptp(V, 0).max()), 1e-9)
+    kw = {'v_color_matrix': np.c_[vcol / 255.0, np.ones(len(vcol))]} if vcol is not None else {}
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(pymeshlab.Mesh(vertex_matrix=(V - c) * k, face_matrix=T.astype(np.int32),
+                               f_scalar_array=sel.astype(np.float64), **kw))
+    ms.compute_selection_by_scalar_per_face(minq=0.5, maxq=1.5)
+    _decimate(ms, max(50, int(target)), selected=True)
+    m = ms.current_mesh()
+    out = (m.vertex_matrix() / k + c, m.face_matrix().astype(np.int64),
+           (m.vertex_color_matrix()[:, :3] * 255).round().astype(np.uint8) if vcol is not None else None)
+    return None if _bad_edges(out[1], len(out[0])) else out
+
+
+def simplify_zoned(r, tol_out, tol_in, inside, log=lambda s: None):
+    """Simplificación automática con dos tolerancias: fuera de las zonas de detalle, tol_out; dentro, tol_in (más
+    fina). inside(verts) -> bool por vértice. Primero se simplifica lo de fuera (sin tocar las zonas) y luego lo de
+    dentro, cada parte mientras su error (medido solo con los puntos originales de esa parte) cumpla su tolerancia,
+    como simplify_auto."""
+    try:
+        import pymeshlab  # noqa: F401
+    except ImportError:
+        log('AVISO: pymeshlab no está instalado; no se simplifica')
+        return r
+    V0, T0 = r.verts, r.tris
+    zin = inside(V0)
+    pts_all = np.concatenate([V0, V0[T0].mean(1)])
+    in_all = np.concatenate([zin, zin[T0].any(1)])
+    n0 = len(T0)
+    log(f'Simplificación por zonas: fuera, tolerancia {tol_out:.3g} mm; en las zonas de detalle, {tol_in:.3g} mm…')
+    cur, errs = (r.verts, r.tris, r.vcolors), []
+    for name, tol, want in (('fuera de las zonas', tol_out, False), ('en las zonas', tol_in, True)):
+        ref = pts_all[in_all == want]
+        if not len(ref):
+            continue
+        best, best_err, pct = None, None, 25.0
+        f_in = inside(cur[0])[cur[1]].any(1)
+        sel = f_in if want else ~f_in
+        n_sel = int(sel.sum())
+        base = cur
+        while n_sel * pct / 100 >= 500:
+            out = _decimate_selected(base[0], base[1], base[2], sel, n_sel * pct / 100)
+            if out is None:
+                break
+            err = _mesh_error(V0, T0, out[0], out[1], pts=ref)
+            ok = err[1] <= tol and err[3] <= 2 * tol
+            log(f'  {name}, {pct:g} % ({len(out[1]):,} triángulos en total): error p99 {err[1]:.3g} mm, '
+                f'p99,9 {err[3]:.3g} mm {"✔" if ok else "✘"}')
+            if not ok:
+                break
+            best, best_err = out, err
+            pct /= 2
+        if best is not None:
+            cur = best
+            errs.append(best_err)
+    if not errs:
+        log('No se puede simplificar sin superar la tolerancia: se conserva la malla completa')
+        return r
+    err = _mesh_error(V0, T0, cur[0], cur[1])
+    log(f'Simplificada: {n0:,} -> {len(cur[1]):,} triángulos ({len(cur[1]) / n0 * 100:.1f} %), '
+        f'error medio {err[0]:.3g} mm, p99 {err[1]:.3g} mm, máximo {err[2]:.3g} mm')
+    return _simplified(r, cur, err)
 
 
 def _simplified(r, out, err):
@@ -1713,10 +1855,11 @@ def simplify_auto(r: Result, tol, log=lambda s: None, workers=None):
     return _simplified(r, best, best_err)
 
 
-def _decimate(ms, target):
+def _decimate(ms, target, selected=False):
     ms.meshing_decimation_quadric_edge_collapse(targetfacenum=int(target), qualitythr=0.3, preserveboundary=True,
                                                 preservenormal=True, preservetopology=True, optimalplacement=True,
-                                                planarquadric=True, planarweight=0.002, autoclean=True)
+                                                planarquadric=True, planarweight=0.002, autoclean=True,
+                                                selected=selected)
 
 
 def _decimate_parallel(V, T, vcolors, frac, workers):

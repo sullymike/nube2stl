@@ -345,6 +345,10 @@ SPEC = [
          'Automático: todo lo que la impresora no notaría (según Calidad). O un % fijo de triángulos (100 = no).'),
         ('poisson_depth', 'Profundidad Poisson', 'i', dict(lo=0, hi=13, special='automática'),
          'Solo modo 3D. Detalle del octree: +1 = doble de detalle y ~4× memoria.'),
+        ('detail_res', 'Resolución de las zonas', 'f', dict(lo=0, hi=100, step=0.1, dec=2, suf='mm',
+                                                             special='la del escaneo'),
+         'Celda dentro de las zonas de detalle (✂ Recortar › zona de detalle, en la vista de la nube).\n'
+         'Solo tipos con Poisson. La del escaneo: el detalle máximo que tiene la nube.'),
         ('front_pct', 'Percentil frente', 'f', dict(lo=0, hi=100, step=5, dec=0, suf='%'),
          'Qué punto de cada celda se toma: 100 = el más saliente, 90 = robusto a puntos sueltos.'),
         ('min_pts', 'Puntos mín./celda', 'i', dict(lo=1, hi=1000), 'Puntos necesarios para que una celda sea parte de la pieza.'),
@@ -452,6 +456,35 @@ def plan_html_real(st, prm, pl):
 
 def plan_html(st, prm):
     """Resumen del cálculo de impresión (lo usan la pestaña Tamaño y el asistente)."""
+    return _plan_html(st, prm) + detail_html(st, prm)
+
+
+def detail_html(st, prm):
+    """Línea del plan para las zonas de detalle (si las hay)."""
+    if not getattr(prm, 'detail', None):
+        return ''
+    n = len(prm.detail)
+    if not relief.has_detail(prm):
+        return (f'<br><span style="color:{C["muted"]}">{n} zona{"s" if n > 1 else ""} de detalle: solo cuentan en '
+                f'los tipos con Poisson (objeto, terreno, bloque, 3d)</span>')
+    pl = relief.print_plan(st, prm)
+    rf = relief.zone_res(prm, pl['res'], pl['res_scan'])
+    if rf is None:
+        why = ('la general ya es la del escaneo: la nube no tiene más detalle que dar' if prm.detail_res <= 0 else
+               f'«Resolución de las zonas» ({prm.detail_res:g}) no es más fina que la general')
+        return (f'<br><span style="color:{C["accent_dk"]}">⚠ Zonas de detalle sin efecto ({pl["res"]:.3g}): {why}. '
+                f'Sirven cuando la resolución general es más gruesa que el escaneo</span>')
+    s = pl['scale']
+    frac = float(st.get('detail_frac', 0.0))
+    txt = (f'<br><b>Zonas de detalle:</b> {n} · celda de {rf:.3g} ({rf * s:.3g} mm en la pieza) · '
+           f'{100 * frac:.1f} % de la nube')
+    if not relief.is_real(prm) and rf < 0.9 * pl['res_print']:
+        txt += (f'<br><span style="color:{C["accent_dk"]}">⚠ Más fina de lo que imprime la boquilla '
+                f'({pl["res_print"]:.2f}): la pieza lo lleva, pero la impresora no lo saca</span>')
+    return txt
+
+
+def _plan_html(st, prm):
     pl = relief.print_plan(st, prm)
     if relief.is_real(prm):
         return plan_html_real(st, prm, pl)
@@ -515,7 +548,7 @@ ONLY_RELIEF = ('front_pct', 'min_pts', 'fill', 'despike', 'smooth', 'gauss', 'fl
                'z_scale', 'negative', 'base', 'frame', 'behind', 'flip', 'auto_straighten', 'view', 'plane',
                'edges')
 ONLY_OBJECT = ('up', 'cut', 'ground', 'interior', 'ceiling')
-ONLY_POISSON = ('poisson_depth',)
+ONLY_POISSON = ('poisson_depth', 'detail_res')
 ONLY_POINTS = ('denoise',)             # modos que trabajan con los puntos en 3D (no con el mapa de alturas)
 ONLY_HEIGHTMAP = ('detrend',)
 REAL_OFF = ('target_len', 'nozzle', 'layer', 'bed_x', 'bed_y', 'quality', 'boost', 'boost_lo', 'boost_hi',
@@ -528,7 +561,8 @@ METHOD_NAME = {'alturas': 'mapa de alturas', '3d': '3D (Poisson)', 'bloque': 'ca
                'objeto': 'objeto completo (Poisson)'}
 
 
-EXTRA_LABELS = {'keep_groups': 'Grupos conservados', 'crop': 'Recortes', 'merge': 'Nubes unidas',
+EXTRA_LABELS = {'keep_groups': 'Grupos conservados', 'crop': 'Recortes', 'detail': 'Zonas de detalle',
+                'merge': 'Nubes unidas',
                 'reverse': 'Reverso',
                 'classes': 'Clases del LiDAR',
                 'plane_pts': 'Puntos del plano'}   # ajustes sin campo propio
@@ -1346,6 +1380,8 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.keep_groups = []             # centros de los grupos sueltos que se conservan (clic en la nube)
         self.crops = []                   # recortes hechos en la vista de la nube (Params.crop)
+        self.details = []                 # zonas de detalle (Params.detail)
+        self._marks = []                  # orden en que se han hecho recortes y zonas ('crop' | 'detail'), para Deshacer
         self.merges = []                  # otras nubes unidas a la abierta (Params.merge, ver unir.py)
         self.plane_pts = []               # puntos marcados para el plano de la cara (Params.plane_pts)
         self.classes = []                 # LiDAR: clases que se usan (Params.classes; vacío = todas menos el ruido)
@@ -1846,8 +1882,8 @@ class MainWindow(QMainWindow):
         if HAVE_GL:
             self.cloud_view.group_clicked.connect(self._group_clicked)
             self.cloud_view.crop_drawn.connect(self._crop_drawn)
-            self.cloud_view.crop_undo.connect(lambda: self._set_crops(self.crops[:-1], 'Recorte deshecho'))
-            self.cloud_view.crop_clear.connect(lambda: self._set_crops([], 'Sin recortes: vuelve la nube entera'))
+            self.cloud_view.crop_undo.connect(self._crop_undo)
+            self.cloud_view.crop_clear.connect(self._crop_clear)
             self.cloud_view.set_crop_state(0)
         self.relief_view = MplView()
         self.mesh_view = self._make_3d('malla') if HAVE_GL else None
@@ -2126,6 +2162,7 @@ class MainWindow(QMainWindow):
                 setattr(p, name, type(getattr(p, name))(w.value()))
         p.keep_groups = [list(c) for c in self.keep_groups]
         p.crop = [dict(c) for c in self.crops]
+        p.detail = [dict(c) for c in self.details]
         p.merge = [dict(m) for m in self.merges]
         p.plane_pts = [list(q) for q in self.plane_pts]
         p.classes = list(self.classes)
@@ -2137,12 +2174,15 @@ class MainWindow(QMainWindow):
         self._setting = True                  # sin releer ni relimpiar la nube por cada parámetro
         self.keep_groups = [list(c) for c in (p.keep_groups or [])]
         self.crops = [dict(c) for c in (p.crop or [])]
+        self.details = [dict(c) for c in (p.detail or [])]
+        self._marks = ['crop'] * len(self.crops) + ['detail'] * len(self.details)
+        self._detail_cache = None
         self.merges = [dict(m) for m in (p.merge or [])]
         self.plane_pts = [list(q) for q in (p.plane_pts or [])]
         self.classes = [int(c) for c in (p.classes or [])]
         self.reverse = [dict(e) for e in (p.reverse or [])]
         if HAVE_GL and hasattr(self, 'cloud_view'):
-            self.cloud_view.set_crop_state(len(self.crops))
+            self.cloud_view.set_crop_state(len(self.crops) + len(self.details))
         try:
             self._set_params(p)
         finally:
@@ -2791,7 +2831,7 @@ class MainWindow(QMainWindow):
         if path:
             self.job = None
             self.keep_groups = []                 # los grupos elegidos y los recortes eran de la nube anterior
-            self._set_crops_quiet([])
+            self._clear_marks_quiet()
             self.merges = []
             self._merge_note()
             self._plane_reset()
@@ -3208,7 +3248,7 @@ class MainWindow(QMainWindow):
         self.say(f'--- Ejemplo: {title}. {desc}')
         self.job = None
         self.keep_groups = []
-        self._set_crops_quiet([])
+        self._clear_marks_quiet()
         self.merges = []
         self._merge_note()
         self._plane_reset()
@@ -3233,6 +3273,7 @@ class MainWindow(QMainWindow):
         self.lbl_tag.setText(os.path.basename(self.path))
         self._las_note()
         self._plane_note()
+        self._detail_stats()
         self.update_plan()
         if getattr(self, 'wizard', None) is not None:
             self.wizard.cloud_loaded()
@@ -3478,10 +3519,15 @@ class MainWindow(QMainWindow):
         self.start(prepare_task, (self.path, self.xyz_all, self.rgb_all, self.load_info, self.params()),
                    self.on_loaded)
 
+    def _clear_marks_quiet(self):
+        """Sin recortes ni zonas de detalle (otra nube, otras unidades)."""
+        self.details, self._marks = [], []
+        self._set_crops_quiet([])
+
     def _set_crops_quiet(self, crops):
         self.crops = crops
         if HAVE_GL:
-            self.cloud_view.set_crop_state(len(crops))
+            self.cloud_view.set_crop_state(len(crops) + len(self.details))
 
     def _set_crops(self, crops, msg):
         if getattr(self, 'xyz_all', None) is None or self.busy():
@@ -3490,18 +3536,70 @@ class MainWindow(QMainWindow):
         self.say(msg)
         self._toggle_clean(keep_view=True)
 
-    def _crop_drawn(self, M, poly, inside):
-        """Rectángulo de recorte dibujado en la vista: se guarda con la matriz de la vista llevada a las
-        coordenadas de la nube (la vista enseña los puntos centrados en _cloud_center)."""
+    def _set_details(self, zones, msg):
+        """Zonas de detalle: no cambian la nube preparada, solo cómo se ve y el plan."""
+        if getattr(self, 'xyz_all', None) is None or self.busy():
+            return
+        self.details = zones
+        self._detail_cache = None
+        if HAVE_GL:
+            self.cloud_view.set_crop_state(len(self.crops) + len(zones))
+        self.say(msg)
+        self._detail_stats()
+        self.show_cloud(home=False)
+        self.update_plan()
+
+    def _detail_stats(self):
+        """Parte de la nube que cae en las zonas (para el plan y la memoria prevista)."""
+        st = getattr(self, 'stats', None)
+        if st is None:
+            return
+        xyz = getattr(self, 'xyz', None)
+        if not self.details or xyz is None or not len(xyz):
+            st.pop('detail_frac', None)
+            return
+        sub = xyz[::max(1, len(xyz) // 200_000)]
+        st['detail_frac'] = float(relief.zone_mask(np.asarray(sub, np.float64), self.details).mean())
+
+    def _crop_undo(self):
+        if not self._marks:
+            return
+        if self._marks[-1] == 'detail':
+            self._marks.pop()
+            self._set_details(self.details[:-1], 'Zona de detalle deshecha')
+        else:
+            self._marks.pop()
+            self._set_crops(self.crops[:-1], 'Recorte deshecho')
+
+    def _crop_clear(self):
+        had_crops = bool(self.crops)
+        self._marks = []
+        if self.details:
+            self._set_details([], 'Sin zonas de detalle')
+        if had_crops:
+            self._set_crops([], 'Sin recortes: vuelve la nube entera')
+
+    def _crop_drawn(self, M, poly, how):
+        """Rectángulo o lazo dibujado en la vista: se guarda con la matriz de la vista llevada a las coordenadas de
+        la nube (la vista enseña los puntos centrados en _cloud_center). how: 'dentro', 'fuera' o 'detalle'."""
         if getattr(self, 'xyz_all', None) is None or self.busy():
             return
         T = np.eye(4)
         T[:3, 3] = -np.asarray(self._cloud_center, np.float64)
         Mabs = np.asarray(M, np.float64) @ T
-        c = {'M': [round(float(x), 12) for x in Mabs.ravel()], 'poly': [[round(float(a), 6) for a in q] for q in poly],
-             'inside': bool(inside)}
+        c = {'M': [round(float(x), 12) for x in Mabs.ravel()], 'poly': [[round(float(a), 6) for a in q] for q in poly]}
+        shape = 'del rectángulo' if len(poly) == 4 else 'del lazo'
+        if how == 'detalle':
+            self._marks.append('detail')
+            msg = f'Zona de detalle {len(self.details) + 1}: lo de dentro {shape}'
+            if self.params().mode not in relief.ZONE_MODES:
+                msg += ' (solo cuenta en los tipos con Poisson: objeto, terreno, bloque, 3d)'
+            self._set_details(self.details + [c], msg)
+            return
+        c['inside'] = how == 'dentro'
+        self._marks.append('crop')
         self._set_crops(self.crops + [c], f'Recorte {len(self.crops) + 1}: '
-                        + ('se deja lo de dentro del rectángulo' if inside else 'se quita lo de dentro del rectángulo'))
+                        + (f'se deja lo de dentro {shape}' if c['inside'] else f'se quita lo de dentro {shape}'))
 
     def _group_clicked(self, g):
         """Clic en un grupo suelto de la vista de la nube: conservarlo (verde) o volver a quitarlo (rojo)."""
@@ -3530,7 +3628,7 @@ class MainWindow(QMainWindow):
             self.say(why)
             if not keep_sel:                      # grupos, recortes y uniones están en mm: con otras unidades no valen
                 self.keep_groups = []
-                self._set_crops_quiet([])
+                self._clear_marks_quiet()
                 self._plane_reset()
                 if self.merges:
                     self.say('Las nubes unidas se quitan: estaban encajadas con las unidades anteriores. Vuelve a '
@@ -3608,6 +3706,12 @@ class MainWindow(QMainWindow):
         if li.get('crop') is not None:           # lo recortado, en gris claro
             c = np.array(c, np.float64)
             c[~li['crop'][idx]] = [0.80, 0.81, 0.82]
+        if self.details:                         # las zonas de detalle, teñidas de naranja
+            c = np.array(c, np.float64)
+            z = relief.zone_mask(np.asarray(p, np.float64), self.details)
+            if li.get('crop') is not None:
+                z &= li['crop'][idx]
+            c[z] = 0.45 * c[z] + 0.55 * np.array([0.93, 0.48, 0.15])
         if HAVE_GL:
             if not home and getattr(self, '_cloud_center', None) is not None:
                 p0 = self._cloud_center

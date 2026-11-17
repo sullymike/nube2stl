@@ -54,7 +54,11 @@ def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
     if col is not None:
         pc.colors = o3d.utility.Vector3dVector(col.astype(np.float64))
     del P
-    pc = objeto3d.clean_cloud(pc, res, log)
+    fine = hm.fine[ok] if getattr(hm, 'fine', None) is not None else None
+    rf = relief.zone_res(prm, res, hm.res_scan) if fine is not None else None
+    if rf:
+        log(f'Zonas de detalle a {rf:.3g}')
+    pc = objeto3d.clean_cloud(pc, res, log, fine if rf else None, rf)
     R = np.asarray(pc.points)
 
     # ---------------- puntos sintéticos: trasera y paredes donde falta lateral
@@ -107,7 +111,7 @@ def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
 
     # ---------------- Poisson
     ext = np.ptp(np.asarray(allpc.points), 0).max()
-    depth = prm.poisson_depth or int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, 11))
+    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, rf or res, ext=ext)
     est_t = int(3.7 * len(allpc.points))
     log(f'Estimación: ≈ {est_t:,} triángulos → {relief.sizes_text(est_t // 2, est_t, col is not None)}')
     log(f'Poisson apantallado, profundidad {depth} (celda ≈ {ext * 1.1 / 2 ** depth:.2f}), '
@@ -137,5 +141,7 @@ def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
     log(f'{len(tris):,} triángulos, aristas no-manifold: {bad}, volumen {relief.fmt_vol(vol)}, '
         f'{sx:.1f} × {sy:.1f} × {sz:.1f} mm (grosor del bloque {sz:.1f} mm)')
     out = np.where(mask, (top - zb) * s, np.nan)
-    return relief.Result(verts, tris, vcol, out, res * s, s, hm.ang, bad, vol, mode='bloque',
-                         xform=relief.grid_to_piece(hm, s, 1.0, (-vmin[0], -vmin[1], 0), zb))
+    r = relief.Result(verts, tris, vcol, out, res * s, s, hm.ang, bad, vol, mode='bloque',
+                      xform=relief.grid_to_piece(hm, s, 1.0, (-vmin[0], -vmin[1], 0), zb))
+    r.detail_res = rf
+    return r
