@@ -408,10 +408,15 @@ que el resto.
 
 ## Ideas para después (sin estudiar)
 
-- **Fallo visto el 17-11-2026 (ya estaba en 0.22):** el bloque de ejemplo con «Resolución» manual 2,5 (el escaneo
-  da 0,92) sale de 200 × 200 en vez de 200 × 142 y con 6 aristas abiertas; con 4, de 107 mm de alto y 24 abiertas.
-  En automático sale bien. Parece geometría que Poisson inventa por detrás o en los laterales cuando la celda es
-  mucho más gruesa que el escaneo. Mirarlo.
+- **Fallo visto y ARREGLADO el 17-11-2026 (0.23.0; venía de antes):** el bloque de ejemplo con «Resolución» manual
+  2,5 (el escaneo da 0,92) salía de 200 × 200 en vez de 200 × 142 y con 6 aristas abiertas; con 4, de 107 mm de
+  alto y 24 abiertas. Causa: los puntos de los laterales caen en el borde de la silueta y muchos **fuera de la
+  rejilla** del mapa de alturas, que se ajusta a la cara; `bloque3d` ensanchaba la silueta 3 celdas pero antes
+  descartaba lo que caía fuera de la rejilla. Con celdas de 2 mm o más no quedaba ningún lateral (9 de 18.793): el
+  bloque se quedaba en 7 mm de grueso, con muy pocos puntos sintéticos, y Poisson se iba a −100 mm. Arreglo: la
+  silueta ensanchada se mira sobre la rejilla con un margen de 3 celdas. Ahora cualquier celda da 200 × 142 × 29 mm
+  y en automático entran el doble de puntos de los laterales (18.566 frente a 8.614). Prueba
+  `Modos3D.test_bloque_celda_gruesa`. El modo 3d tiene el mismo filtro, pero allí es a propósito (solo la cara).
 
 - Copia a tamaño real como superficie abierta (sin base), y por trozos para piezas que ni Poisson con 12 niveles
   cubre al detalle del escaneo.

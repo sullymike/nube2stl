@@ -17,6 +17,9 @@ HISTORY = [
         'la simplificación usa allí un error admisible más fino. Para los tipos con Poisson (objeto, terreno, '
         'bloque, 3d); el plan de Tamaño y la memoria prevista las cuentan. En una prueba, el error en la zona bajó '
         'de 0,38 a 0,08 mm',
+        'Bloque con «Resolución» manual gruesa (2 mm o más con escaneos finos): se perdían los laterales escaneados '
+        'y la pieza salía deformada (200 × 200 en vez de 200 × 142) y abierta. También en automático entran ahora '
+        'más puntos de los laterales',
         'Malla 3D, Color › «zonas de detalle»: pinta en naranja dónde han quedado las zonas en la pieza, con el '
         'número de triángulos y su tamaño dentro y fuera (con «Triángulos» se ve la diferencia)',
     ]),

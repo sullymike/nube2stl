@@ -37,9 +37,13 @@ def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
     X, Y, Z = hm.U - hm.u0, hm.V - hm.v0, hm.H
     c = np.floor(X / res).astype(np.int64)
     r = np.floor(Y / res).astype(np.int64)
-    near = ndimage.binary_dilation(mask, iterations=3)       # los laterales caen justo en el borde de la silueta
-    ok = (c >= 0) & (c < nu) & (r >= 0) & (r < nv)
-    ok[ok] = near[r[ok], c[ok]]
+    # los laterales caen en el borde de la silueta y muchos, justo fuera de la rejilla (que se ajusta a la cara):
+    # se mira la silueta ensanchada 3 celdas sobre una rejilla con ese margen (sin él, con celdas de 2 mm o más
+    # se perdían casi todos los puntos de los laterales y Poisson inventaba la pieza por detrás)
+    M = 3
+    near = ndimage.binary_dilation(np.pad(mask, M), iterations=M)
+    ok = (c >= -M) & (c < nu + M) & (r >= -M) & (r < nv + M)
+    ok[ok] = near[r[ok] + M, c[ok] + M]
     if prm.despike > 0:      # puntos que sobresalen claramente del frente del mapa de alturas
         rr, cc = np.clip(r[ok], 0, nv - 1), np.clip(c[ok], 0, nu - 1)
         ok[ok] &= Z[ok] <= grid[rr, cc] + prm.despike

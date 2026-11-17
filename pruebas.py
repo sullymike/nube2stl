@@ -397,6 +397,17 @@ class Modos3D(unittest.TestCase):
         self.assertLess(desviacion.stats(r)['p50'], 0.15)
         self.assertGreater(r.size[2], 25)                           # los laterales escaneados (30 mm) cuentan
 
+    def test_bloque_celda_gruesa(self):
+        """Con celdas mucho mayores que el escaneo (2,5 y 4 mm; el escaneo da 0,9) los laterales caen fuera de la
+        rejilla de la cara. Antes se perdían y Poisson inventaba la pieza por detrás: 200 × 200 y aristas abiertas."""
+        if apart(self):
+            return
+        for res in (2.5, 4.0):
+            r = relief.reconstruct(self.P, relief.Params(mode='bloque', target_len=200, res=res), self.C, quiet)
+            self.assertEqual(r.bad_edges, 0, res)
+            self.assertAlmostEqual(float(r.size[1]), 142, delta=5, msg=res)     # el bloque mide 200 × 140
+            self.assertGreater(r.size[2], 25, res)
+
 
 class Objeto(unittest.TestCase):
     """La vasija sintética: cerrada, de la altura pedida y pegada a la superficie escaneada."""
