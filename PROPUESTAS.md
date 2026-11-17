@@ -336,6 +336,48 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
   - La profundidad de Poisson automática no pasa de 11: en piezas de decenas de metros el detalle tiene un suelo de
     centímetros, salvo que se suba a mano (y la memoria crece unas 4 veces por nivel).
 
+## G. Solo una parte de la nube, y más detalle en una zona — *PROPUESTA (17-11-2026)*
+
+Dos supuestos del usuario: (1) no pasar toda la nube a malla, solo una parte; (2) una parte con más resolución
+que el resto.
+
+### G1. Elegir la parte — *ya existe; mejoras propuestas*
+
+- **Lo que hay.** Nube › ✂ Recortar: un rectángulo en pantalla que atraviesa la nube en la dirección de la vista;
+  quedarse con lo de dentro o quitarlo; varios encadenados desde vistas distintas; Deshacer / Sin recortes; se
+  guardan en los ajustes y en el registro. Por dentro (`entrada.crop_mask`) cada recorte ya es un **polígono** en
+  coordenadas de pantalla con su matriz, no un rectángulo.
+- **Mejoras.**
+  - **Lazo (polígono a mano alzada o por clics)**: solo cambia la vista; los datos ya lo admiten. Esfuerzo: pequeño.
+  - **Caja 3D con medidas** (mín./máx. en x, y, z, o alrededor de un punto con un radio): para repetir el mismo
+    recorte en otra nube o en otra fecha. Esfuerzo: pequeño–medio.
+  - **Quedarse con un grupo** con un clic (como ya se marcan los grupos sueltos). Esfuerzo: pequeño.
+
+### G2. Zona de detalle — *propuesta*
+
+- **Qué es.** Marcar una o varias zonas (con el mismo gesto que el recorte: rectángulo o lazo) y darles su
+  resolución: la del escaneo o un valor; el resto, a la resolución normal (o más gruesa). Ejemplo: la inscripción de
+  una lápida a 0,3 mm y el resto a 1 mm; los capiteles de un acueducto a 1:1 y el resto a 5 cm.
+- **Cómo se haría** (datos: `Params.detail` = lista de zonas {M, poly, res}; la máscara, con `crop_mask`).
+  - **Tipos con Poisson (objeto, 3D, bloque, terreno).** Poisson es un octree adaptativo: refina solo donde hay
+    puntos densos. Se submuestrea la nube a la celda fina dentro de la zona y a la normal fuera, y la profundidad se
+    fija para la celda fina. La memoria crece con el área de la zona, no con la de toda la pieza.
+  - **Mapa de alturas (alturas).** La rejilla es uniforme: se haría a la celda fina en todas partes y fuera de la
+    zona se suavizaría a la normal (o, si la memoria no da, una rejilla fina solo en la caja de la zona, cosida con la
+    gruesa). Primera versión: rejilla fina entera, solo si cabe en memoria (la estimación ya lo dice).
+  - **Simplificación con dos tolerancias.** PyMeshLab simplifica solo las caras seleccionadas (`selected=True`):
+    primero fuera de la zona con la tolerancia normal, después dentro con la fina. Así el fichero solo crece por la
+    zona.
+  - **Vista.** Las zonas se pintan sobre la nube (como los recortes) y en la malla, con «Triángulos», se ve la
+    diferencia. El plan de Tamaño y la estimación de memoria cuentan las celdas de cada zona.
+  - **Transición.** Poisson y la simplificación ya pasan de una celda a otra sin escalones; en el mapa de alturas,
+    una franja de unas celdas en la que se mezclan las dos.
+- **Esfuerzo.** Medio–alto: Poisson y simplificación por zonas, medio; mapa de alturas, alto (por la memoria).
+- **Riesgos.**
+  - En impresión, la zona fina no puede bajar de media boquilla: tiene sentido sobre todo en copias sin impresora o
+    en piezas grandes donde la resolución la limita la memoria.
+  - La simplificación en franjas paralelas tiene que respetar la selección (cada franja con su parte de zona).
+
 ---
 
 ## Ideas para después (sin estudiar)
