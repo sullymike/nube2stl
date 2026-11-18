@@ -492,6 +492,7 @@ class Viewer3D(QWidget):
                                                     # ('dentro', 'fuera'; 'detalle' o 'detalle-borrar': zona de
                                                     # detalle, no recorta)
     zone_brushed = pyqtSignal(object, float, bool)  # nube: trazo del pincel (centros en la vista, radio, borrar)
+    box_requested = pyqtSignal(str)                 # nube: «caja con medidas…» elegida ('dentro'/'fuera')
     part_picked = pyqtSignal(object, str)           # nube: clic en una parte (punto en la vista, 'dentro'/'fuera')
     crop_undo = pyqtSignal()
     crop_clear = pyqtSignal()
@@ -567,12 +568,14 @@ class Viewer3D(QWidget):
             bl.addWidget(cr)
             self.crop_btn = cr
             sh = QComboBox()
-            sh.addItems(['▭ rectángulo', '◌ lazo', '👆 una parte (clic)'])
+            sh.addItems(['▭ rectángulo', '◌ lazo', '👆 una parte (clic)', '▣ caja con medidas…'])
             sh.setToolTip('Forma: rectángulo (arrastrar de una esquina a otra) o lazo (dibujar el contorno a mano\n'
                           'alzada, con el botón pulsado; al soltar se cierra).\n'
                           'Una parte: clic sobre una pieza separada del resto (una estatua entre varias, un\n'
                           'fragmento suelto): se deja solo ella o se quita, todo lo que está unido a ese punto.\n'
-                          'Con esta, el botón izquierdo sigue girando la vista.')
+                          'Con esta, el botón izquierdo sigue girando la vista.\n'
+                          'Caja con medidas: x, y, z mínimos y máximos en mm de la nube, para recortar con números\n'
+                          'exactos o repetir el mismo recorte en otra nube con las mismas coordenadas.')
             bl.addWidget(sh)
             self.crop_shape = sh
             cm = QComboBox()
@@ -623,6 +626,8 @@ class Viewer3D(QWidget):
             bl.addWidget(cl)
             self.crop_tools = [sh, cm, un, cl, zt, zs, ze]
             self.mark_tools = [un, cl]
+            self._shape_prev = 0
+            sh.currentIndexChanged.connect(self._shape_changed)
             cr.toggled.connect(lambda on: self._tool_toggled(cr, on))
             zb.toggled.connect(lambda on: self._tool_toggled(zb, on))
             for c in (sh, zt, zs, ze):
@@ -888,6 +893,17 @@ class Viewer3D(QWidget):
             return 'detalle-borrar' if self.zone_erase.currentIndex() else 'detalle'
         return self.CROP_HOW[self.crop_how.currentIndex()]
 
+    def _shape_changed(self, i):
+        """«Caja con medidas…» no es una forma de dibujar: abre la ventana de la caja y vuelve a la forma de antes."""
+        if i == 3:
+            self.crop_shape.blockSignals(True)
+            self.crop_shape.setCurrentIndex(self._shape_prev)
+            self.crop_shape.blockSignals(False)
+            self._apply_tool()
+            self.box_requested.emit(self.CROP_HOW[self.crop_how.currentIndex()])
+        else:
+            self._shape_prev = i
+
     def _tool_toggled(self, btn, on):
         """Recortar, Zona de detalle y Medir no pueden estar marcados a la vez."""
         if on:
@@ -910,7 +926,7 @@ class Viewer3D(QWidget):
         part = crop and self.crop_shape.currentIndex() == 2
         v.crop_mode = (crop and not part) or (zone and not brush)
         if crop:
-            v.crop_shape = ('rect', 'lazo', 'parte')[self.crop_shape.currentIndex()]
+            v.crop_shape = ('rect', 'lazo', 'parte', 'rect')[self.crop_shape.currentIndex()]
         elif zone:
             v.crop_shape = 'lazo' if self.zone_tool.currentIndex() == 1 else 'rect'
         erase = zone and self.zone_erase.currentIndex() == 1

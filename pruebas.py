@@ -484,6 +484,16 @@ class Recorte(unittest.TestCase):
         self.assertTrue(k[:40_000][a[:, 0] < 40].all())
         self.assertFalse(k[40_000:].any())
 
+    def test_caja(self):
+        """Caja con medidas (mm de la nube): dejar o quitar lo de dentro, y encadenada con otros recortes."""
+        xyz = np.random.default_rng(5).uniform(-10, 10, (20_000, 3)).astype(np.float32)
+        box = {'box': [-5, 5, -2, 8, 0, 10], 'inside': True}
+        k = entrada.crop_mask(xyz, [box])
+        ref = (np.abs(xyz[:, 0]) <= 5) & (xyz[:, 1] >= -2) & (xyz[:, 1] <= 8) & (xyz[:, 2] >= 0)
+        self.assertTrue(np.array_equal(k, ref))
+        self.assertTrue(np.array_equal(entrada.crop_mask(xyz, [dict(box, inside=False)]), ~ref))
+        self.assertFalse(entrada.crop_mask(xyz, [box, dict(box, inside=False)]).any())
+
     def test_vistas(self):
         p = np.random.default_rng(1).normal(size=(5000, 3)).astype(np.float32)
         for view, n in relief.VIEWS.items():

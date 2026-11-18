@@ -1157,6 +1157,62 @@ def _lib_versions():
     return out
 
 
+class BoxDialog(QDialog):
+    """Caja con medidas para recortar: x, y, z mínimos y máximos en mm de la nube. changed(lo, hi) se llama al
+    cambiar un valor (la ventana principal dibuja la caja en la vista)."""
+
+    def __init__(self, parent, lo, hi, inside=True, changed=lambda lo, hi: None):
+        super().__init__(parent)
+        self.setWindowTitle('Recortar con una caja')
+        self.changed = changed
+        lay = QVBoxLayout(self)
+        t = QLabel('Medidas en mm de la nube (sus coordenadas, ya en mm). Empieza con lo que ocupa ahora la nube; '
+                   'la caja se ve en la vista mientras la cambias. Guardada con los ajustes, se repite igual en '
+                   'otra nube con las mismas coordenadas (otra fecha, otra tanda del escaneo).')
+        t.setWordWrap(True)
+        t.setObjectName('muted')
+        lay.addWidget(t)
+        g = QGridLayout()
+        g.addWidget(QLabel('<b>mínimo</b>'), 0, 1)
+        g.addWidget(QLabel('<b>máximo</b>'), 0, 2)
+        self.sp = []
+        span = float(np.max(np.subtract(hi, lo))) or 1.0
+        for a, name in enumerate('xyz'):
+            g.addWidget(QLabel(name), a + 1, 0)
+            pair = []
+            for j, v in enumerate((lo[a], hi[a])):
+                sb = QDoubleSpinBox()
+                sb.setRange(-1e8, 1e8)
+                sb.setDecimals(1 if span > 50 else 2)
+                sb.setSingleStep(max(0.1, round(span / 100, 1)))
+                sb.setSuffix(' mm')
+                sb.setValue(float(v))
+                sb.valueChanged.connect(self._changed)
+                g.addWidget(sb, a + 1, j + 1)
+                pair.append(sb)
+            self.sp.append(pair)
+        lay.addLayout(g)
+        self.how = QComboBox()
+        self.how.addItems(['dejar lo de dentro', 'quitar lo de dentro'])
+        self.how.setCurrentIndex(0 if inside else 1)
+        lay.addWidget(self.how)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText('Recortar')
+        bb.button(QDialogButtonBox.Cancel).setText('Cancelar')
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+        self._changed()
+
+    def box(self):
+        """(lo, hi) con cada mínimo por debajo de su máximo."""
+        v = np.array([[a.value(), b.value()] for a, b in self.sp])
+        return v.min(1), v.max(1)
+
+    def _changed(self, *_):
+        self.changed(*self.box())
+
+
 class AboutDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
@@ -1963,12 +2019,13 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.cloud_view = self._make_3d('nube') if HAVE_GL else MplView()
         if HAVE_GL:
-            self.cloud_view.extra_items = self._plane_markers
+            self.cloud_view.extra_items = lambda: self._plane_markers() + self._box_items()
         if HAVE_GL:
             self.cloud_view.group_clicked.connect(self._group_clicked)
             self.cloud_view.crop_drawn.connect(self._crop_drawn)
             self.cloud_view.zone_brushed.connect(self._zone_brushed)
             self.cloud_view.part_picked.connect(self._crop_part)
+            self.cloud_view.box_requested.connect(self._crop_box)
             self.cloud_view.crop_undo.connect(self._crop_undo)
             self.cloud_view.crop_clear.connect(self._crop_clear)
             self.cloud_view.set_crop_state(0)
@@ -3685,6 +3742,49 @@ class MainWindow(QMainWindow):
         self._marks.append('crop')
         self._set_crops(self.crops + [c], f'Recorte {len(self.crops) + 1}: '
                         + (f'se deja lo de dentro {shape}' if c['inside'] else f'se quita lo de dentro {shape}'))
+
+    def _box_items(self):
+        """La caja que se está ajustando (BoxDialog), en la vista de la nube."""
+        box, c0 = getattr(self, '_box_edit', None), getattr(self, '_cloud_center', None)
+        if box is None or c0 is None:
+            return []
+        import pyqtgraph.opengl as gl
+        import visor
+        lo, hi = np.asarray(box[0], np.float64) - c0, np.asarray(box[1], np.float64) - c0
+        C = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+        E = [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)]
+        li = gl.GLLinePlotItem(pos=C[np.ravel(E)].astype(np.float32), mode='lines', color=(0.88, 0.48, 0.25, 1.0),
+                               width=2, antialias=True)
+        li.setGLOptions(visor.MARKER_GL)
+        li.setDepthValue(25)
+        return [li]
+
+    def _crop_box(self, how):
+        """«Caja con medidas…»: ventana con x, y, z mínimos y máximos; la caja se ve en la vista mientras."""
+        xyz = getattr(self, 'xyz', None)
+        if getattr(self, 'xyz_all', None) is None or xyz is None or not len(xyz) or self.busy():
+            return
+        q = np.asarray(xyz[:: max(1, len(xyz) // 1_000_000)], np.float64)
+        lo, hi = q.min(0), q.max(0)
+
+        def show(a, b):
+            self._box_edit = (a, b)
+            if HAVE_GL:
+                self.cloud_view.redraw_extra()
+        dlg = BoxDialog(self, lo, hi, how == 'dentro', show)
+        ok = dlg.exec_() == QDialog.Accepted
+        a, b = dlg.box()
+        self._box_edit = None
+        if HAVE_GL:
+            self.cloud_view.redraw_extra()
+        if not ok:
+            return
+        c = {'box': [round(float(v), 3) for pair in zip(a, b) for v in pair], 'inside': dlg.how.currentIndex() == 0}
+        self._marks.append('crop')
+        f = lambda v: f'{v:.1f}'.replace('.', ',')                     # noqa: E731
+        txt = ' · '.join(f'{n} {f(a[i])}…{f(b[i])}' for i, n in enumerate('xyz'))
+        self._set_crops(self.crops + [c], f'Recorte {len(self.crops) + 1}: '
+                        + ('se deja' if c['inside'] else 'se quita') + f' lo de dentro de la caja ({txt} mm)')
 
     def _crop_part(self, point, how):
         """Clic en una parte con «una parte (clic)»: dejar solo lo conectado con ese punto, o quitarlo."""

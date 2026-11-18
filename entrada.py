@@ -539,10 +539,18 @@ def crop_mask(xyz, crops):
     'M' matriz 4×4 (16 números, por filas) que lleva los puntos (mm) a la pantalla de aquel momento (coordenadas
     normalizadas −1…1), 'poly' el polígono dibujado en esa pantalla [[x, y], …] y 'inside' True = quedarse con lo
     de dentro (False = quitar lo de dentro). O bien 'part' [x, y, z]: la parte conectada con ese punto (clic en
-    una pieza separada), entre lo que han dejado los recortes anteriores. Se aplican en orden."""
+    una pieza separada), entre lo que han dejado los recortes anteriores. O 'box' [x0, x1, y0, y1, z0, z1]: una caja
+    con medidas en mm de la nube (se repite igual en otra nube con las mismas coordenadas). Se aplican en orden."""
     from matplotlib.path import Path
     keep = np.ones(len(xyz), bool)
     for c in crops or ():
+        if 'box' in c:                        # caja con medidas: x0, x1, y0, y1, z0, z1 (mm de la nube)
+            b = np.asarray(c['box'], np.float64).reshape(3, 2)
+            inside = np.ones(len(xyz), bool)
+            for a in range(3):
+                inside &= (xyz[:, a] >= b[a, 0]) & (xyz[:, a] <= b[a, 1])
+            keep &= inside if c.get('inside', True) else ~inside
+            continue
         if 'part' in c:                       # una parte (clic): la conectada con ese punto, entre lo que queda
             idx = np.flatnonzero(keep)
             if len(idx):

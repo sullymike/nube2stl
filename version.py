@@ -16,6 +16,8 @@ HISTORY = [
         'La simplificación por zonas mira también el error máximo: ya no mete las esquinas de la pared',
         'Recortar › «👆 una parte (clic)»: un clic sobre una pieza separada del resto (una estatua entre varias, '
         'un fragmento suelto) deja solo lo que está unido a ese punto, o lo quita',
+        'Recortar › «▣ caja con medidas…»: x, y, z mínimos y máximos en mm, con la caja dibujada en la vista; para '
+        'recortes exactos o repetir el mismo en otra nube con las mismas coordenadas',
     ]),
     ('0.24.0', 'noviembre 2026', [
         'Zonas de detalle con pincel: botón propio «🖌 Zona de detalle» en la vista de la nube (antes estaba escondido '

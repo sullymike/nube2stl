@@ -352,8 +352,11 @@ que el resto.
     mano alzada con el botón pulsado (un punto cada 3 px) y se cierra al soltar; se guarda como el polígono del
     recorte, sin tocar `crop_mask`. Se descartó el lazo por clics: con el arrastre basta y no choca con el doble
     clic (centrar la vista).
-  - **Caja 3D con medidas** (mín./máx. en x, y, z, o alrededor de un punto con un radio): para repetir el mismo
-    recorte en otra nube o en otra fecha. Esfuerzo: pequeño–medio.
+  - **Caja 3D con medidas** — *HECHA el 18-11-2026 (0.25.0)*. ✂ Recortar › «▣ caja con medidas…» abre
+    `BoxDialog` (x, y, z mín./máx. en mm de la nube, rellenos con lo que ocupa la nube preparada; dejar o quitar);
+    la caja se dibuja en la vista mientras se cambia (`_box_items`, en `extra_items`). Recorte
+    `{'box': [x0, x1, y0, y1, z0, z1], 'inside'}` en `crop_mask`. Prueba `Recorte.test_caja`. Sin hacer: «alrededor
+    de un punto con un radio» (con la caja y «una parte» no ha hecho falta).
   - **Quedarse con un grupo** con un clic — *HECHO el 18-11-2026 (0.25.0)*. ✂ Recortar › «👆 una parte (clic)»:
     el recorte `{'part': [x, y, z], 'inside'}` deja (o quita) la parte conectada con el punto del clic, entre lo que
     han dejado los recortes anteriores (`entrada.part_mask`, con la misma rejilla de vóxeles que los grupos sueltos:
