@@ -309,4 +309,4 @@ def apply(r, prm, log=lambda s: None):
         vcol = np.r_[r.vcolors, np.full((len(V2) - len(r.verts), 3), 128, np.uint8)]
     return relief.Result(V2, F2, vcol, r.grid, r.cell, r.scale, r.angle, bad, vol, r.err_mean, r.err_max,
                          r.mode, r.err_p99, r.res, xform=r.xform, hollow=r.hollow or cav is not None,
-                         zclip=r.zclip, corner=r.corner)
+                         zclip=r.zclip, corner=r.corner, view_grid=getattr(r, 'view_grid', None))

@@ -398,6 +398,7 @@ class Result:
     zclip: object = None           # (zmin, zmax) en la pieza: la parte de la nube que el modo representa
     corner: bool = False           # pieza de esquina (esquina.py): un mapa de alturas por cara
     open_edges: int = 0            # superficie abierta (open_mesh): aristas de borde (bad_edges = las de más de 2 caras)
+    view_grid: object = None       # (rejilla, celda) para enseñar el relieve sombreado con las zonas de detalle finas
 
     @property
     def relief_depth(self):
@@ -1027,8 +1028,9 @@ def memory_estimate(stats, prm, npoints, avail=None):
         detail = f'{npoints / 1e6:.1f} M puntos, {cells / 1e6:.2f} M celdas, Poisson a profundidad {depth}'
     else:
         rf = zone_res(prm, pl['res'], pl['res_scan'])
-        if rf:                                  # zonas de detalle: la rejilla entera, a la celda fina
-            cells *= (pl['res'] / rf) ** 2
+        if rf:                                  # zonas de detalle: la caja de las zonas, a la celda fina
+            frac = min(1.0, 2 * float(stats.get('detail_frac', 0.1)))   # la caja, con margen: unas dos veces
+            cells = cells * (1 - frac) + cells * frac * zone_k(pl['res'], rf) ** 2
         tris = TRIS_PER_CELL * cells
         gb = MEM_BASE_GB + MEM_PER_POINT * npoints + MEM_PER_TRI * tris
         detail = f'{npoints / 1e6:.1f} M puntos, ≈ {tris / 1e6:.1f} M triángulos antes de simplificar'
@@ -1394,35 +1396,33 @@ def heightmap(p, prm: Params, rgb=None, log=lambda s: None, fine=None):
 
 
 def _zone_refine(hm, prm, rf, log=lambda s: None):
-    """Zonas de detalle en el mapa de alturas: la rejilla pasa a la celda fina rf (la general ÷ k) en toda la
-    pieza. Fuera de las zonas es la general interpolada (lisa: al simplificar quedan triángulos grandes); dentro, una
-    rejilla fina hecha solo con la caja de las zonas, con los mismos ajustes y la misma forma de la roca que la
-    general (si no, saldría un escalón en el borde). Una franja de dos celdas generales hace la transición. Cambia hm en el sitio (grid, mask, valid, cgrid, res); hm.res_out es la general."""
+    """Zonas de detalle en el mapa de alturas: la rejilla general se queda como está y, aparte, una rejilla fina
+    (celda rf = la general ÷ k) solo en la caja de las zonas, alineada con las celdas generales (hm.zone). Dentro de
+    las zonas, la fina hecha con los puntos (los mismos ajustes y la misma forma de la roca que la general, para que no
+    salga un escalón); alrededor, la general interpolada, con una transición de dos celdas generales; en el borde de
+    la caja, la general interpolada justa, para coserla con las celdas generales de fuera (_mesh_zoned)."""
     res = hm.res
     k = zone_k(res, rf)
     cf = res / k
     nv, nu = hm.grid.shape
-    NV, NU = nv * k, nu * k
-    if NV * NU > 60_000_000:
-        log(f'AVISO: zonas de detalle sin efecto: la rejilla fina sería de {NU} × {NV} celdas y no cabe. Sube '
-            f'«Resolución de las zonas» o la «Resolución» general')
-        return
     U, V, H, fine = hm.U, hm.V, hm.H, hm.fine
-    # caja de las zonas, con un margen de 3 celdas generales, en la rejilla de la pieza
-    m = 3 * res
-    u_lo, u_hi = max(U[fine].min() - m, hm.u0), min(U[fine].max() + m, hm.u0 + nu * res)
-    v_lo, v_hi = max(V[fine].min() - m, hm.v0), min(V[fine].max() + m, hm.v0 + nv * res)
-    if u_hi <= u_lo or v_hi <= v_lo:
+    m = 3 * res                                     # caja de las zonas, con 3 celdas generales de margen
+    I0 = max(int(np.floor((U[fine].min() - m - hm.u0) / res)), 0)
+    I1 = min(int(np.ceil((U[fine].max() + m - hm.u0) / res)), nu)
+    J0 = max(int(np.floor((V[fine].min() - m - hm.v0) / res)), 0)
+    J1 = min(int(np.ceil((V[fine].max() + m - hm.v0) / res)), nv)
+    if I1 <= I0 or J1 <= J0:
         log('AVISO: las zonas de detalle caen fuera de la pieza')
         return
-    i0, i1 = int((u_lo - hm.u0) / cf), int(np.ceil((u_hi - hm.u0) / cf))
-    j0, j1 = int((v_lo - hm.v0) / cf), int(np.ceil((v_hi - hm.v0) / cf))
-    i1, j1 = min(i1, NU), min(j1, NV)
+    ncell = (J1 - J0) * (I1 - I0) * k * k
+    if ncell > 60_000_000:
+        log(f'AVISO: zonas de detalle sin efecto: la rejilla fina de su caja sería de {ncell / 1e6:.0f} M celdas. '
+            f'Sube «Resolución de las zonas» o haz zonas más pequeñas')
+        return
+    i0, i1, j0, j1 = I0 * k, I1 * k, J0 * k, J1 * k
     sub = (U >= hm.u0 + i0 * cf) & (U < hm.u0 + i1 * cf) & (V >= hm.v0 + j0 * cf) & (V < hm.v0 + j1 * cf)
     if sub.sum() < 100:
         return
-    # rejilla fina de la caja, con los mismos ajustes (relleno, picos, suavizados) y la forma de la roca de la
-    # general
     col = hm.col[sub] if hm.col is not None else None
     try:
         gf, mf, cgf, vf, u0f, v0f = grid_from(U[sub], V[sub], H[sub], col, cf, prm, like=hm.grid_info,
@@ -1430,48 +1430,63 @@ def _zone_refine(hm, prm, rf, log=lambda s: None):
     except ValueError as e:
         log(f'AVISO: zonas de detalle sin efecto ({e})')
         return
-    have = mf.astype(np.float64)                    # la pieza fina (las celdas sin puntos ya van rellenas)
-    # en la rejilla final (solo la caja): centros de las celdas finas en la rejilla fina de la caja
+    have = mf.astype(np.float64)
     jj, ii = np.mgrid[j0:j1, i0:i1]
-    x = (hm.u0 + (ii + 0.5) * cf - u0f) / cf - 0.5
-    y = (hm.v0 + (jj + 0.5) * cf - v0f) / cf - 0.5
-    x, y = np.round(x), np.round(y)                 # alineadas: cada celda final es una de la fina
+    x = np.round((hm.u0 + (ii + 0.5) * cf - u0f) / cf - 0.5)
+    y = np.round((hm.v0 + (jj + 0.5) * cf - v0f) / cf - 0.5)
     hf = ndimage.map_coordinates(gf, [y, x], order=0, mode='nearest')
     a = ndimage.map_coordinates(have, [y, x], order=0, mode='constant', cval=0.0) > 0.5
-    # qué celdas son de las zonas: la mayoría de sus puntos están en ellas
     ci = ((U[sub] - hm.u0) / cf).astype(np.int64) - i0
     cj = ((V[sub] - hm.v0) / cf).astype(np.int64) - j0
-    ok = (ci >= 0) & (ci < i1 - i0) & (cj >= 0) & (cj < j1 - j0)
     shape = (j1 - j0, i1 - i0)
+    ok = (ci >= 0) & (ci < shape[1]) & (cj >= 0) & (cj < shape[0])
     flat = cj[ok] * shape[1] + ci[ok]
     n_all = np.bincount(flat, minlength=shape[0] * shape[1])
     n_in = np.bincount(flat, weights=fine[sub][ok].astype(np.float64), minlength=shape[0] * shape[1])
-    z = (n_in > 0.5 * np.maximum(n_all, 1)).reshape(shape)
-    z = ndimage.binary_closing(z, iterations=k)
-    # peso: 1 en las zonas, baja a 0 en dos celdas generales; y 0 donde la rejilla fina no tiene datos
+    z = ndimage.binary_closing((n_in > 0.5 * np.maximum(n_all, 1)).reshape(shape), iterations=k)
     w = np.clip(1 - ndimage.distance_transform_edt(~z) / (2 * k), 0, 1)
     w *= np.clip(ndimage.distance_transform_edt(a) / k, 0, 1)
-    # la general interpolada (cada celda, área k × k) y la máscara repetida
-    G = ndimage.zoom(hm.grid, k, order=1, mode='nearest', grid_mode=True)
-    box = G[j0:j1, i0:i1]
-    G[j0:j1, i0:i1] = box + w * (hf - box)
-    hm.zone_box, hm.zone_w, hm.zone_hf = (j0, j1, i0, i1), w, hf      # (para las pruebas)
-    hm.grid = G
-    hm.mask = np.repeat(np.repeat(hm.mask, k, 0), k, 1)
-    hm.valid = np.repeat(np.repeat(hm.valid, k, 0), k, 1)
+    # en los lados de la caja que lindan con celdas generales, w = 0: allí se cose con ellas
+    rr, cc = np.mgrid[0:shape[0], 0:shape[1]]
+    big = np.full(shape, np.inf)
+    for on, dist in ((J0 > 0, rr), (J1 < nv, shape[0] - 1 - rr), (I0 > 0, cc), (I1 < nu, shape[1] - 1 - cc)):
+        if on:
+            big = np.minimum(big, dist)
+    w *= np.clip(big / k, 0, 1)
+    # la general interpolada en las celdas finas de la caja
+    gc = np.where(np.isfinite(hm.grid), hm.grid, float(np.nanmin(hm.grid[hm.mask])))
+    G = ndimage.map_coordinates(gc, [(jj + 0.5) / k - 0.5, (ii + 0.5) / k - 0.5], order=1, mode='nearest')
+    G = G + w * (hf - G)
+    zmask = np.repeat(np.repeat(hm.mask[J0:J1, I0:I1], k, 0), k, 1)
+    zc = None
     if hm.cgrid is not None:
-        cg = np.repeat(np.repeat(hm.cgrid, k, 0), k, 1)
+        cg = np.stack([ndimage.map_coordinates(hm.cgrid[..., c].astype(np.float64),
+                                               [(jj + 0.5) / k - 0.5, (ii + 0.5) / k - 0.5], order=1, mode='nearest')
+                       for c in range(3)], -1)
         if cgf is not None:
             cfine = np.stack([ndimage.map_coordinates(cgf[..., c], [y, x], order=1, mode='nearest')
                               for c in range(3)], -1)
-            box = cg[j0:j1, i0:i1]
-            cg[j0:j1, i0:i1] = box + w[..., None] * (cfine - box)
-        hm.cgrid = cg
-    hm.res_out, hm.res, hm.detail_res = res, cf, cf
-    hm.floor = float(G[hm.mask].min())
-    log(f'Zonas de detalle en el mapa de alturas: celda de {cf:.3g} (la general {res:g} ÷ {k}) en una rejilla de '
-        f'{NU} × {NV}; detalle fino en {z.sum() * cf * cf / max(hm.mask.sum() * cf * cf, 1e-9) * 100:.1f} % de la '
-        f'pieza')
+            cg = cg + w[..., None] * (cfine - cg)
+        zc = cg
+    hm.zone = dict(J0=J0, J1=J1, I0=I0, I1=I1, k=k, grid=G, mask=zmask, cgrid=zc, w=w, hf=hf)
+    hm.detail_res = cf
+    if zmask.any():
+        hm.floor = min(hm.floor, float(G[zmask].min()))
+    log(f'Zonas de detalle en el mapa de alturas: celda de {cf:.3g} (la general {res:g} ÷ {k}) en una caja de '
+        f'{I1 - I0} × {J1 - J0} celdas generales ({100 * (I1 - I0) * (J1 - J0) / max(nu * nv, 1):.0f} % de la '
+        f'rejilla); detalle fino en {100 * z.sum() / (k * k) / max(hm.mask.sum(), 1):.1f} % de la pieza')
+
+
+def zone_full_grid(hm):
+    """La rejilla entera a la celda fina (la general interpolada fuera de la caja): para medir y para las pruebas.
+    -> (rejilla, celda) o (hm.grid, hm.res) sin zonas."""
+    Z = getattr(hm, 'zone', None)
+    if Z is None:
+        return hm.grid, hm.res
+    k = Z['k']
+    G = ndimage.zoom(np.where(np.isfinite(hm.grid), hm.grid, 0.0), k, order=1, mode='nearest', grid_mode=True)
+    G[Z['J0'] * k:Z['J1'] * k, Z['I0'] * k:Z['I1'] * k] = Z['grid']
+    return G, hm.res / k
 
 
 def grid_from(U, V, H, col, res, prm, log=lambda s: None, info=None, like=None, origin=None):
@@ -1626,7 +1641,7 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
             r = _reconstruct_25d(hm, prm, log, back)
             if getattr(hm, 'detail_res', None):
                 r.detail_res = hm.detail_res
-        r.res = getattr(hm, 'res_out', hm.res)      # la general (con zonas, la rejilla es más fina)
+        r.res = hm.res                              # la general (las zonas van aparte, en hm.zone)
     rf = getattr(r, 'detail_res', None)         # zonas de detalle (lo pone el modo; el realce rehace el Result)
     xf = r.xform                                # nube -> pieza, antes de los acabados
     if prm.mode != 'alturas':                   # en el mapa de alturas ya se ha hecho (_boost)
@@ -1798,18 +1813,35 @@ def _boost(h, hb, mask, res, prm, log=lambda s: None):
 
 def _reconstruct_25d(hm, prm, log, back=None):
     grid, mask, cgrid, res, ang = hm.grid, hm.mask, hm.cgrid, hm.res, hm.ang
-    # --- alturas relativas, molde, exageración
-    h = grid - grid[mask].min()
+    Z = getattr(hm, 'zone', None)             # zonas de detalle: rejilla fina aparte, en su caja
+    if Z is not None and back is not None:
+        log('AVISO: una pieza de dos caras no lleva zonas de detalle: se hace con la rejilla general')
+        Z = None
+    zh = zm = None
+    if Z is not None:
+        zh, zm = Z['grid'], Z['mask'].copy()
+    # --- alturas relativas, molde, exageración (las mismas para las dos rejillas)
+    lo = float(grid[mask].min()) if zh is None or not zm.any() else min(float(grid[mask].min()), float(zh[zm].min()))
+    h = grid - lo
+    if zh is not None:
+        zh = zh - lo
     if prm.negative:
-        h = h[mask].max() - h
+        top = float(h[mask].max()) if zh is None or not zm.any() else max(float(h[mask].max()), float(zh[zm].max()))
+        h = top - h
+        if zh is not None:
+            zh = top - zh
         if back is not None:
             log('AVISO: un molde no tiene reverso: se hace solo con la cara')
             back = None
     h = np.clip(h, 0, None) * prm.z_scale
+    if zh is not None:
+        zh = np.clip(zh, 0, None) * prm.z_scale
     hb = None
     if back is not None:                      # reverso, ya en la rejilla de la cara: alturas hacia abajo
         hb = np.clip(back - back[mask].min(), 0, None) * prm.z_scale
     h, hb = _boost(h, hb, mask, res, prm, log)
+    if zh is not None:
+        zh, _ = _boost(zh, None, zm, res / Z['k'], prm)
 
     # --- forma: rectángulo y marco
     nv, nu = mask.shape
@@ -1819,6 +1851,9 @@ def _reconstruct_25d(hm, prm, log, back=None):
         if hb is not None:
             hb = np.where(mask, hb, 0.0)
         mask = np.ones_like(mask)
+        if zh is not None:
+            zh = np.where(zm, zh, 0.0)
+            zm = np.ones_like(zm)
     if prm.frame > 0:
         F = max(1, int(round(prm.frame / (res * s))))
         # el marco se añade fuera: recalcular la escala para que el lado mayor siga cumpliéndose
@@ -1846,7 +1881,20 @@ def _reconstruct_25d(hm, prm, log, back=None):
 
     cellmm = res * s
     hf = h * s
-    verts, tris, vcol = _mesh(hf, mask, cellmm, prm.base, cgrid, hb=None if hb is None else hb * s)
+    view_grid = None
+    if zh is not None:
+        F_ = F if prm.frame > 0 else 0
+        zone = dict(Z, J0=Z['J0'] + F_, J1=Z['J1'] + F_, I0=Z['I0'] + F_, I1=Z['I1'] + F_, h=zh * s, mask=zm)
+        verts, tris, vcol = _mesh_zoned(hf, mask, cellmm, prm.base, cgrid, zone)
+        kz = Z['k']
+        if hf.size * kz * kz <= 16_000_000:           # para la vista sombreada: la general ampliada y la fina dentro
+            vg = ndimage.zoom(np.where(mask, hf, 0.0), kz, order=1, mode='nearest', grid_mode=True)
+            vm = np.repeat(np.repeat(mask, kz, 0), kz, 1)
+            sl = (slice(zone['J0'] * kz, zone['J1'] * kz), slice(zone['I0'] * kz, zone['I1'] * kz))
+            vg[sl] = np.where(zm, zh * s, vg[sl])
+            view_grid = (np.where(vm, vg + prm.base, np.nan), cellmm / kz)
+    else:
+        verts, tris, vcol = _mesh(hf, mask, cellmm, prm.base, cgrid, hb=None if hb is None else hb * s)
     if hb is not None:
         lift = float(np.nanmax(np.where(mask, hb * s, np.nan)))
         verts[:, 2] += lift                   # el reverso por debajo: la pieza empieza en z = 0
@@ -1864,7 +1912,7 @@ def _reconstruct_25d(hm, prm, log, back=None):
     else:
         T = grid_to_piece(hm, s, prm.z_scale, (*off, prm.base), hm.floor)
         zc = (prm.base - 0.5 * cellmm, np.inf)
-    return Result(verts, tris, vcol, out, cellmm, s, ang, bad, vol, xform=T, zclip=zc)
+    return Result(verts, tris, vcol, out, cellmm, s, ang, bad, vol, xform=T, zclip=zc, view_grid=view_grid)
 
 
 def back_face(hm, prm, log=lambda s: None):
@@ -2108,7 +2156,7 @@ def _simplified(r, out, err):
         bad, vol, ope = 0, _volume(verts, tris), 0
     return Result(verts, tris, vcol, r.grid, r.cell, r.scale, r.angle, bad, vol,
                   err[0], err[2], r.mode, err[1], r.res, xform=r.xform, hollow=r.hollow, zclip=r.zclip, corner=r.corner,
-                  open_edges=ope)
+                  open_edges=ope, view_grid=r.view_grid)
 
 
 def simplify(r: Result, pct, log=lambda s: None, workers=None):
@@ -2533,6 +2581,100 @@ def _mesh(h, mask, cell, base, cgrid=None, hb=None):
     used[tris.ravel()] = True
     remap = np.cumsum(used) - 1
     return verts[used], remap[tris], (vcol[used] if vcol is not None else None)
+
+
+def _vertex_avg(h, mask):
+    """Altura de cada vértice de una rejilla (nv+1, nu+1): la media de las celdas de la pieza que lo tocan (NaN si
+    ninguna)."""
+    hp = np.pad(np.where(mask, h, np.nan), 1, constant_values=np.nan)
+    st = np.stack([hp[:-1, :-1], hp[:-1, 1:], hp[1:, :-1], hp[1:, 1:]])
+    n = (~np.isnan(st)).sum(0)
+    return np.where(n > 0, np.nan_to_num(st).sum(0) / np.maximum(n, 1), np.nan)
+
+
+def _mesh_zoned(h, mask, cell, base, cgrid, zone):
+    """Sólido cerrado como _mesh, con una caja de celdas finas (zone: J0, J1, I0, I1 en celdas generales, k, h y
+    mask finos, cgrid) cosida a las generales. Los vértices van en la retícula fina (las esquinas generales son las
+    de índice múltiplo de k). Las celdas generales que lindan con la caja se triangulan en abanico desde su centro,
+    pasando por los vértices finos de ese lado: así no quedan vértices en T y la malla queda cerrada. Paredes y
+    base salen de las aristas de borde de la cara de arriba."""
+    nv, nu = h.shape
+    k, J0, J1, I0, I1 = zone['k'], zone['J0'], zone['J1'], zone['I0'], zone['I1']
+    zh, zm = zone['h'], zone['mask']
+    W = nu * k + 1
+    CENTER = (nv * k + 1) * W                     # claves de los centros de los abanicos: CENTER + celda general
+    key = lambda r, c: np.asarray(r, np.int64) * W + c                                   # noqa: E731
+    inbox = np.zeros((nv, nu), bool)
+    inbox[J0:J1, I0:I1] = True
+    tri = []
+    # celdas finas de la caja
+    rr, cc = np.nonzero(zm)
+    rr, cc = rr + J0 * k, cc + I0 * k
+    a_, b_, c_, d_ = key(rr, cc), key(rr, cc + 1), key(rr + 1, cc + 1), key(rr + 1, cc)
+    tri += [np.stack([a_, b_, c_], 1), np.stack([a_, c_, d_], 1)]
+    # celdas generales fuera de la caja
+    gr, gc = np.nonzero(mask & ~inbox)
+    zp = np.pad(inbox & mask, 1)
+    nb = np.stack([zp[gr, gc + 1], zp[gr + 1, gc + 2], zp[gr + 2, gc + 1], zp[gr + 1, gc]], 1)   # arriba, dcha, abajo, izq
+    plain = ~nb.any(1)
+    r0, c0 = gr[plain] * k, gc[plain] * k
+    a_, b_, c_, d_ = key(r0, c0), key(r0, c0 + k), key(r0 + k, c0 + k), key(r0 + k, c0)
+    tri += [np.stack([a_, b_, c_], 1), np.stack([a_, c_, d_], 1)]
+    t = np.arange(k)
+    for j in np.flatnonzero(~plain):                      # abanicos (pocas: el contorno de la caja)
+        r, c, sides = gr[j] * k, gc[j] * k, nb[j]
+        ring = []
+        for side, (rs, cs, dr, dc) in enumerate(((r, c, 0, 1), (r, c + k, 1, 0), (r + k, c + k, 0, -1),
+                                                 (r + k, c, -1, 0))):
+            steps = t if sides[side] else t[:1]
+            ring.append(key(rs + dr * steps, cs + dc * steps))
+        ring = np.concatenate(ring)
+        ctr = CENTER + gr[j] * nu + gc[j]
+        tri.append(np.stack([np.full(len(ring), ctr), ring, np.roll(ring, -1)], 1))
+    tris_k = np.concatenate(tri)
+    keys, tris = np.unique(tris_k, return_inverse=True)
+    tris = tris.reshape(-1, 3).astype(np.int64)
+    # posiciones y alturas
+    is_c = keys >= CENTER
+    vr, vc = np.where(is_c, 0, keys // W), np.where(is_c, 0, keys % W)
+    cidx = np.where(is_c, keys - CENTER, 0)
+    X = np.where(is_c, (cidx % nu + 0.5) * cell, vc * cell / k)
+    Y = np.where(is_c, (cidx // nu + 0.5) * cell, vr * cell / k)
+    vz_c = _vertex_avg(h, mask)                           # (nv+1, nu+1)
+    vz_f = _vertex_avg(zh, zm)                            # ((J1-J0)k+1, (I1-I0)k+1)
+    Zv = np.full(len(keys), np.nan)
+    fr, fc = vr - J0 * k, vc - I0 * k
+    inf_ = ~is_c & (fr >= 0) & (fr <= vz_f.shape[0] - 1) & (fc >= 0) & (fc <= vz_f.shape[1] - 1)
+    Zv[inf_] = vz_f[fr[inf_], fc[inf_]]
+    gen = ~is_c & np.isnan(Zv) & (vr % k == 0) & (vc % k == 0)
+    Zv[gen] = vz_c[vr[gen] // k, vc[gen] // k]
+    Zv[is_c] = h.ravel()[cidx[is_c]]
+    Zv = np.nan_to_num(Zv) + base
+    # paredes y base: aristas de borde de la cara de arriba (una sola cara), en el sentido de su triángulo
+    e = np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
+    nvt = len(keys)
+    fw = e[:, 0] * nvt + e[:, 1]
+    bw = e[:, 1] * nvt + e[:, 0]
+    border = e[~np.isin(fw, bw)]
+    p0, p1 = border[:, 0], border[:, 1]
+    walls = [np.stack([p1, p0, p0 + nvt], 1), np.stack([p1, p0 + nvt, p1 + nvt], 1)]
+    all_t = np.concatenate([tris, tris[:, ::-1] + nvt] + walls)
+    verts = np.concatenate([np.stack([X, Y, Zv], 1), np.stack([X, Y, np.zeros(nvt)], 1)])
+    vcol = None
+    if cgrid is not None:
+        def vcolor(cg, m):
+            return np.stack([_vertex_avg(cg[..., i], m) for i in range(3)], -1)
+        cc_ = vcolor(cgrid.astype(np.float64), mask)
+        col = np.full((len(keys), 3), 160.0)
+        if zone.get('cgrid') is not None:
+            cf_ = vcolor(np.asarray(zone['cgrid'], np.float64), zm)
+            col[inf_] = cf_[fr[inf_], fc[inf_]]
+        g2 = gen | (inf_ & ~np.isfinite(col).all(1) & (vr % k == 0) & (vc % k == 0))
+        col[g2] = cc_[vr[g2] // k, vc[g2] // k]
+        col[is_c] = cgrid.reshape(-1, 3)[cidx[is_c]]
+        col = np.nan_to_num(col, nan=160.0)
+        vcol = np.concatenate([col, col * 0.6]).clip(0, 255).astype(np.uint8)
+    return verts, all_t, vcol
 
 
 def _bad_edges(tris, nverts):

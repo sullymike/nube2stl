@@ -513,11 +513,13 @@ def zone_note(st, prm):
         how = ', la del escaneo' if prm.detail_res <= 0 else ''
     out = (f'<b>Dentro de las zonas ({n}): celda de {f(rf)} mm</b> ({f(rf * s)} mm en la pieza){how}.<br>' + out)
     if prm.mode == 'alturas':
-        cells = pl['cells'] * k * k
-        out += (f'<br>Mapa de alturas: cada celda se parte en {k} × {k}, en toda la pieza ({f(cells / 1e6)} M '
-                f'celdas); fuera de las zonas queda lisa y al simplificar se queda con triángulos grandes.')
+        frac = min(1.0, 2 * float(st.get('detail_frac', 0.1)))
+        cells = pl['cells'] * frac * k * k
+        out += (f'<br>Mapa de alturas: en la caja de las zonas cada celda se parte en {k} × {k} (≈ {f(cells / 1e6)} '
+                f'M celdas finas); fuera, la rejilla general, cosida a la fina por el borde de la caja.')
         if cells > 60e6:
-            out += '<br>' + warn('No cabe (más de 60 M celdas): sube este valor o la «Resolución» general.')
+            out += '<br>' + warn('No cabe (más de 60 M celdas en la caja): sube este valor o haz las zonas más '
+                                 'pequeñas.')
         return out
     d, auto, cell, d_auto = relief.zone_poisson(st, prm, rf)
     ok = cell <= 1.25 * rf * 1.01
@@ -4277,15 +4279,15 @@ class MainWindow(QMainWindow):
         f = self.relief_view.fig
         f.clear()
         ax = f.add_subplot(111)
-        g = r.grid
+        g, cell = r.view_grid if getattr(r, 'view_grid', None) is not None else (r.grid, r.cell)
         filled = np.where(np.isnan(g), np.nanmin(g), g)
-        img = LightSource(315, 40).hillshade(filled, vert_exag=1, dx=r.cell, dy=r.cell)
+        img = LightSource(315, 40).hillshade(filled, vert_exag=1, dx=cell, dy=cell)
         lo, hi = np.percentile(img[~np.isnan(g)], [1, 99.5])
         img = np.clip((img - lo) / max(hi - lo, 1e-6), 0, 1)
         img = np.ma.masked_where(np.isnan(g), img)
         h, w = g.shape
         ax.set_facecolor(C['view'])
-        ax.imshow(img, cmap=STONE, origin='lower', extent=[0, w * r.cell, 0, h * r.cell], vmin=0, vmax=1)
+        ax.imshow(img, cmap=STONE, origin='lower', extent=[0, w * cell, 0, h * cell], vmin=0, vmax=1)
         for sp in ax.spines.values():
             sp.set_color('#b8c2ca')
         ax.tick_params(colors=C['muted'], labelsize=8)

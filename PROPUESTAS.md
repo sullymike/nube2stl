@@ -380,7 +380,7 @@ que el resto.
     Prueba `Recorte.test_una_parte`: tres esferas separadas; dos que se tocan son una parte, y se separan
     quitando la unión con un rectángulo. En la ventana: tres vasijas, un clic en la del medio la deja sola.
 
-### G2. Zona de detalle — *HECHA en 0.23.0 para los tipos con Poisson; mapa de alturas (primera versión) en 0.25.0*
+### G2. Zona de detalle — *HECHA en 0.23.0 para los tipos con Poisson; mapa de alturas en 0.25.0 (cosida)*
 
 - **Qué es.** Marcar una o varias zonas (con el mismo gesto que el recorte: rectángulo o lazo) y darles su
   resolución: la del escaneo o un valor; el resto, a la resolución normal (o más gruesa). Ejemplo: la inscripción de
@@ -448,8 +448,19 @@ que el resto.
     - De paso: `simplify_zoned` exige también error máximo ≤ 2 × tolerancia; con la pared en celdas finas, la
       simplificación metía las esquinas 1,5 mm (p99,9 no lo veía).
     - Pruebas: `ZonasDetalle.test_mapa_de_alturas`, `ZonasDetalleAlturas.test_relieve_con_zona`.
-    - Pendiente: rejilla fina solo en la caja de las zonas, cosida con la general (menos memoria en piezas
-      grandes); el reverso (Archivo › Añadir el reverso) se calcula entero a la celda fina.
+    - Pendiente: ~~rejilla fina solo en la caja de las zonas, cosida con la general~~ (*HECHO el 18-11-2026*, ver
+      abajo); el reverso: una pieza de dos caras no lleva zonas (se avisa).
+  - Mapa de alturas, **segunda versión — HECHA el 18-11-2026 (0.25.0)**: la rejilla general no cambia y la fina va
+    aparte, solo en la caja de las zonas (`hm.zone`: J0, J1, I0, I1 en celdas generales, k, grid, mask, cgrid),
+    alineada con las celdas generales. En los lados de la caja que lindan con celdas generales el peso es 0 (la
+    general interpolada justa). `_mesh_zoned`: vértices en la retícula fina con claves enteras (`np.unique`, sin
+    matrices de toda la pieza); las celdas generales que lindan con la caja se triangulan en abanico desde su centro
+    pasando por los vértices finos de ese lado (sin vértices en T); paredes y base salen de las aristas de borde de
+    la cara de arriba, sin suponer rejilla. `_reconstruct_25d` aplica a las dos rejillas el mismo origen de alturas,
+    molde, exageración, realce, rectángulo y marco. `zone_full_grid` rehace la rejilla fina entera para medir.
+    Medido (la misma losa): error dentro 0,092 (antes 0,097), fuera 0,296; malla sin simplificar 141.000 triángulos
+    (antes 336.000), simplificada 14.900 (antes 15.900), 6,2 s y 407 MB (antes 22,7 s y 517 MB). Cerrada con
+    contorno, rectángulo, marco y molde. Con reverso, sin zonas (aviso).
 
 ### G3. Pincel para las zonas de detalle — *HECHO el 18-11-2026 (después de 0.23.0)*
 - **Por qué.** Al usuario le parecía que «pintar la zona» no estaba hecho: la zona solo se marcaba con la tercera

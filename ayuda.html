@@ -261,8 +261,11 @@ y <i>Perfil</i>. En la nube: <i>Arriba</i>, <i>Frente</i> y <i>Lado</i>.</p>
             (por eso la celda de dentro es la general dividida por un entero: 2 mm ÷ 4 = 0,5 mm). Fuera de las zonas
             la rejilla es la general interpolada, lisa; dentro, una rejilla fina hecha con los puntos de la zona,
             con los mismos ajustes y la misma forma de la roca que la general, y una franja de dos celdas hace la
-            transición. La rejilla fina es de toda la pieza, así que gasta más memoria que con Poisson (la nota de
-            Avanzado dice cuántas celdas salen); al simplificar, lo de fuera se queda con triángulos grandes.</li>
+            transición. La rejilla fina se hace solo en la caja de las zonas (con un margen de tres celdas) y se
+            cose por su borde con la general: la malla tiene celdas finas dentro de la caja y generales fuera, sin
+            rendijas. Con media pieza en zona, la malla sale con menos de la mitad de triángulos y en la cuarta
+            parte de tiempo que con toda la rejilla fina, con el mismo detalle (la nota de Avanzado dice cuántas
+            celdas finas salen).</li>
         <li>En los dos casos se simplifica dos veces, fuera con el error admisible normal y dentro con uno
             proporcional a la celda fina.</li>
       </ul>
@@ -1252,7 +1255,8 @@ profundidad de Poisson. Si no hay zonas pintadas lo dice, y si este valor no es 
 avisa de que las zonas no cambian nada.</p>
 <p><b>En el mapa de alturas</b> (relieve, curvo, grabado) cada celda general se parte en k × k: la celda de las
 zonas es la general dividida por un entero, la primera que no pasa de este valor (con 2 mm y 0,7 pedidos, 2 ÷ 3 =
-0,67 mm). La rejilla fina es de toda la pieza; la nota dice cuántas celdas salen y avisa si pasan de 60 millones.</p>
+0,67 mm). La rejilla fina es solo la de la caja de las zonas; la nota dice cuántas celdas finas salen y avisa si
+pasan de 60 millones.</p>
 <p><b>Relación con la <a href="#p-poisson_depth">Profundidad Poisson</a></b> (los demás tipos): Poisson divide la pieza en un octree y
 lo más fino que llega es <code>tamaño de la pieza × 1,1 ÷ 2<sup>profundidad</sup></code>. Con la profundidad en
 automática, el programa la elige a partir de esta celda (no de la general), así que con zonas sube uno o dos
@@ -1539,9 +1543,8 @@ las pérdidas, de mayor a menor importancia:</p>
       según el <a href="#p-use">uso</a>), unidades dudosas preguntadas al abrir y
       <a href="#p-behind">Profundidad máx.</a> automática.</li>
   <li><b><a href="#recorte">Recorte con lazo</a></b> y <b><a href="#zona-detalle">zonas de detalle</a></b>: una parte de
-      la pieza con más resolución que el resto, marcada con pincel, lazo o rectángulo. En el mapa de alturas la
-      rejilla fina es de toda la pieza: faltaría hacerla solo en la caja de la zona, cosida con la general, para
-      gastar menos memoria en piezas grandes.</li>
+      la pieza con más resolución que el resto, marcada con pincel, lazo o rectángulo. En el mapa de alturas, una
+      pieza de dos caras (con reverso) aún no lleva zonas.</li>
 </ul>
 
 <h3>Unir las caras de los laterales de ejemplo</h3>

@@ -1378,9 +1378,9 @@ class ZonasDetalle(unittest.TestCase):
         self.assertLess(np.abs(P[m, 1]).max(), r + 0.5)                # una franja del ancho del pincel
 
     def test_mapa_de_alturas(self):
-        """Mapa de alturas con una zona: la rejilla pasa a la celda fina; dentro sigue a la superficie casi como una
-        rejilla fina entera, fuera es la general. Losa con bultitos de 0,8 mm cada 5 mm, celda general de 2 mm y
-        zona (x > 0) a 0,5 mm."""
+        """Mapa de alturas con una zona: rejilla fina solo en la caja de la zona (hm.zone), la general sigue igual;
+        dentro sigue a la superficie casi como una rejilla fina entera, fuera es la general. Losa con bultitos de
+        0,8 mm cada 5 mm, celda general de 2 mm y zona (x > 0) a 0,5 mm."""
         rng = np.random.default_rng(0)
         x, y = rng.uniform(-100, 100, 400_000), rng.uniform(-60, 60, 400_000)
         f = lambda x, y: 0.8 * np.sin(2 * np.pi * x / 5) * np.sin(2 * np.pi * y / 5) + 0.02 * x   # noqa: E731
@@ -1393,19 +1393,43 @@ class ZonasDetalle(unittest.TestCase):
             p = relief.Params(mode='alturas', target='real', res=res, detail=detail, detail_res=0.5, front_pct=50)
             hm = relief.heightmap(xyz, p, fine=relief.zone_mask(xyz, detail) if detail else None)
             T = np.linalg.inv(hm.to_grid)
-            jj, ii = np.mgrid[0:hm.grid.shape[0], 0:hm.grid.shape[1]]
-            G = np.c_[(ii.ravel() + 0.5) * hm.res, (jj.ravel() + 0.5) * hm.res, hm.grid.ravel()] @ T[:3, :3].T + T[:3, 3]
+            g, c = relief.zone_full_grid(hm)
+            jj, ii = np.mgrid[0:g.shape[0], 0:g.shape[1]]
+            G = np.c_[(ii.ravel() + 0.5) * c, (jj.ravel() + 0.5) * c, g.ravel()] @ T[:3, :3].T + T[:3, 3]
             e = np.abs(G[:, 2] - f(G[:, 0], G[:, 1]))
             return hm, np.median(e[G[:, 0] > 5]), np.median(e[G[:, 0] < -5])
         _, gin, gout = error([], 2.0)                              # todo a 2 mm
         _, fin, _ = error([], 0.5)                                 # todo a 0,5 mm
         hm, zin, zout = error([zone], 2.0)
-        self.assertEqual(hm.res, 0.5)
-        self.assertEqual(hm.res_out, 2.0)
+        self.assertEqual(hm.res, 2.0)                              # la general no cambia
+        self.assertEqual(hm.detail_res, 0.5)
+        Z = hm.zone
+        self.assertEqual(Z['k'], 4)
+        self.assertLess((Z['I1'] - Z['I0']) * (Z['J1'] - Z['J0']), 0.65 * hm.grid.size)   # la caja: media pieza
         # medido: todo a 2 mm 0,30; todo a 0,5 mm 0,091; con la zona, dentro 0,097 y fuera 0,295
         self.assertLess(zin, 0.4 * gin)                            # dentro, mucho mejor que la general
         self.assertLess(zin, 1.15 * fin)                           # y casi como la fina entera
         self.assertLess(zout, 1.1 * gout)                          # fuera, como la general (interpolada)
+
+    def test_alturas_cosida(self):
+        """La malla de un relieve con una zona: celdas finas solo en la caja, cosidas con las generales (abanicos
+        en el borde): cerrada con contorno, rectángulo, marco y molde, del mismo tamaño que sin zona y con menos de la
+        mitad de triángulos que con toda la rejilla fina."""
+        rng = np.random.default_rng(1)
+        x, y = rng.uniform(-100, 100, 200_000), rng.uniform(-60, 60, 200_000)
+        xyz = np.c_[x, y, 0.8 * np.sin(2 * np.pi * x / 5) * np.sin(2 * np.pi * y / 5)]
+        M = np.eye(4)
+        M[:3, :3] /= 100
+        zone = {'M': M.ravel().tolist(), 'poly': [[0.1, -0.3], [0.5, -0.3], [0.5, 0.3], [0.1, 0.3]]}
+        for extra in ({}, {'shape': 'rectangulo'}, {'frame': 5.0}, {'negative': True}):
+            kw = dict(mode='alturas', target='real', res=2.0, base=3, simplify=100, **extra)
+            r = relief.reconstruct(xyz, relief.Params(detail=[zone], detail_res=0.5, **kw), log=quiet)
+            r0 = relief.reconstruct(xyz, relief.Params(**kw), log=quiet)
+            rf = relief.reconstruct(xyz, relief.Params(**dict(kw, res=0.5)), log=quiet)
+            self.assertEqual(r.bad_edges, 0, extra)
+            self.assertTrue(np.allclose(np.ptp(r.verts[:, :2], 0), np.ptp(r0.verts[:, :2], 0), atol=0.01), extra)
+            self.assertLess(len(r.tris), 0.5 * len(rf.tris), extra)
+            self.assertGreater(len(r.tris), 2 * len(r0.tris), extra)
 
     def test_memoria_cuenta_las_zonas(self):
         st = relief.face_stats(rock(n=60_000), relief.Params(mode='objeto'))

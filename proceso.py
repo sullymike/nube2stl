@@ -24,6 +24,9 @@ def save_result(path, r):
         extra['xform'] = np.asarray(r.xform)
     if r.zclip is not None:
         extra['zclip'] = np.asarray(r.zclip, float)
+    if getattr(r, 'view_grid', None) is not None:
+        extra['view_grid'] = np.asarray(r.view_grid[0], np.float32)
+        extra['view_cell'] = np.array(float(r.view_grid[1]))
     if getattr(r, 'detail_zones', None):          # zonas de detalle, para pintarlas en la malla
         import json
         extra['detail_zones'] = np.array(json.dumps(r.detail_zones))
@@ -45,7 +48,8 @@ def load_result(path):
                          dev=d['dev'] if 'dev' in d else None, hollow=bool(d['hollow']) if 'hollow' in d else False,
                          zclip=tuple(d['zclip']) if 'zclip' in d else None,
                          corner=bool(d['corner']) if 'corner' in d else False,
-                         open_edges=int(d['open_edges']) if 'open_edges' in d else 0)
+                         open_edges=int(d['open_edges']) if 'open_edges' in d else 0,
+                         view_grid=(d['view_grid'], float(d['view_cell'])) if 'view_grid' in d else None)
     if 'detail_zones' in d:
         import json
         r.detail_zones = json.loads(str(d['detail_zones']))
