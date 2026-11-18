@@ -813,6 +813,7 @@ def prepare_task(path, xyz_all, rgb_all, info, prm, log, guess=False):
     stats = relief.face_stats(xyz, relief.Params(view=prm.view, flip=prm.flip, mirror=prm.mirror,
                                                   behind=prm.behind, surface=prm.surface,
                                                   plane=prm.plane, plane_pts=prm.plane_pts))
+    stats['mesh_tris'] = info.get('mesh_tris', 0)         # para la estimación de memoria
     log(f'Cara del relieve: {stats["length"]:.0f} × {stats["width"]:.0f}; el escaneo permite celdas de '
         f'{stats["res_scan"]:.2f}')
     ex = stats['obj']['ext']
@@ -902,7 +903,7 @@ def _watch_memory(job):
                     except psutil.Error:
                         pass
                 return
-            time.sleep(0.25)
+            time.sleep(0.1)
     threading.Thread(target=loop, daemon=True).start()
     return mem
 

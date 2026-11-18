@@ -160,6 +160,68 @@ class Formatos(unittest.TestCase):
             self.assertGreater(nrm[top, 2].mean(), 0.99, ext)
 
 
+    def test_obj_formatos(self):
+        """El lector de OBJ va por bloques con NumPy (un OBJ de 2,5 GB con Open3D pasaba de 8 GB). Aquí las
+        variantes que tiene que entender: cuadriláteros, v//n, v/t/n, índices negativos, color por vértice y la
+        textura del .mtl. Un cubo de 10 mm: los puntos tienen que quedar en sus caras y con su color."""
+        from PIL import Image
+        C = np.array([[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0], [0, 0, 10], [10, 0, 10], [10, 10, 10],
+                      [0, 10, 10]], float)
+        Q = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 4, 7, 3]]
+        col = ''.join(f'v {x:g} {y:g} {z:g} 1 0 0\n' for x, y, z in C)          # rojo, en 0..1
+        variants = {
+            'quads': ''.join(f'v {x:g} {y:g} {z:g}\n' for x, y, z in C)
+                     + ''.join('f ' + ' '.join(str(i + 1) for i in q) + '\n' for q in Q),
+            'vn': ''.join(f'v {x:g} {y:g} {z:g}\n' for x, y, z in C) + 'vn 0 0 1\n'
+                  + ''.join(f'f {q[0] + 1}//1 {q[k] + 1}//1 {q[k + 1] + 1}//1\n' for q in Q for k in (1, 2)),
+            'negativos': ''.join(f'v {x:g} {y:g} {z:g}\n' for x, y, z in C)
+                         + ''.join(f'f {q[0] - 8} {q[k] - 8} {q[k + 1] - 8}\n' for q in Q for k in (1, 2)),
+            'color': col + ''.join(f'f {q[0] + 1} {q[k] + 1} {q[k + 1] + 1}\n' for q in Q for k in (1, 2)),
+        }
+        # textura: imagen verde, y todas las vt en su centro
+        Image.fromarray(np.full((8, 8, 3), (0, 200, 0), np.uint8)).save(os.path.join(TMP, 'tex.png'))
+        _write(os.path.join(TMP, 'tex.mtl'), 'newmtl m\nmap_Kd tex.png\n')
+        variants['textura'] = ('mtllib tex.mtl\n' + ''.join(f'v {x:g} {y:g} {z:g}\n' for x, y, z in C)
+                               + 'vt 0.5 0.5\nvn 0 0 1\nusemtl m\n'
+                               + ''.join(f'f {q[0] + 1}/1/1 {q[k] + 1}/1/1 {q[k + 1] + 1}/1/1\n'
+                                         for q in Q for k in (1, 2)))
+        for name, txt in variants.items():
+            path = os.path.join(TMP, 'tex.obj' if name == 'textura' else f'o_{name}.obj')   # tex.obj, junto a tex.mtl
+            _write(path, txt)
+            P, rgb, nrm, kind = entrada.read_any(path)
+            self.assertEqual(kind, 'malla', name)
+            self.assertGreaterEqual(len(P), 8, name)                   # pocos puntos: el cubo tiene 8 vértices
+            self.assertTrue(((P > -1e-3) & (P < 10 + 1e-3)).all(), name)
+            on_face = np.isclose(P, 0, atol=1e-3).any(1) | np.isclose(P, 10, atol=1e-3).any(1)
+            self.assertTrue(on_face.all(), name)                       # en la superficie del cubo
+            if name == 'color':
+                self.assertTrue((rgb == [255, 0, 0]).all())
+            elif name == 'textura':
+                self.assertTrue((rgb == [0, 200, 0]).all())
+            else:
+                self.assertIsNone(rgb, name)
+
+    def test_stl_por_bloques(self):
+        """El STL se reparte sin unir los vértices repetidos (np.unique de 58 M vértices costaba GB). Lo que sale
+        tiene que ser lo mismo que con la malla unida, también con coordenadas UTM (se resta el origen)."""
+        r = box_result()
+        r.verts = r.verts + np.array([440000.0, 4500000.0, 600.0])
+        p = os.path.join(TMP, 'utm.stl')
+        relief.write_stl(p, r)
+        P, _, nrm, kind = entrada.read_any(p)
+        self.assertEqual(kind, 'malla')
+        self.assertIsNotNone(entrada.read_any.origin)
+        np.testing.assert_allclose(P.max(0) - P.min(0), [40, 30, 20], atol=0.3)
+        old = entrada.CHUNK_TRIS
+        try:                                            # con bloques diminutos sale exactamente lo mismo
+            entrada.CHUNK_TRIS = 3
+            P2, _, nrm2, _ = entrada.read_any(p)
+        finally:
+            entrada.CHUNK_TRIS = old
+        np.testing.assert_allclose(P2, P, atol=1e-4)
+        np.testing.assert_allclose(nrm2, nrm, atol=1e-5)
+
+
 class Unidades(unittest.TestCase):
     def test_auto_metros(self):
         P, _ = relief_block(3000)
@@ -1134,6 +1196,34 @@ class MemoriaEscalaReal(unittest.TestCase):
             p = relief.Params(mode='objeto', ground=True, ratio=1.0, res=r)
             gb.append(relief.memory_estimate(relief.face_stats(xyz, p), p, len(xyz), avail=20)['gb'])
         self.assertLess(gb[1], 1.2 * gb[0])
+
+    def test_estimacion_abierto_por_abajo_y_leer(self):
+        """Medido con un terreno de 35 × 15 m (una malla de 19 M triángulos): la estimación se quedaba hasta un 40 %
+        corta porque no contaba la base y las paredes de «Abierto por abajo» (tanta superficie como la escaneada)
+        ni volver a leer la malla en el proceso de cálculo. Y los procesos de simplificación se ajustan a la memoria
+        libre en ese momento."""
+        rng = np.random.default_rng(5)
+        xyz = np.c_[rng.uniform(0, 8_000, 300_000), rng.uniform(0, 4_000, 300_000), rng.uniform(0, 2_000, 300_000)]
+        p = relief.Params(mode='objeto', ratio=1.0, res=14.0)
+        st = relief.face_stats(xyz, p)
+        e0 = relief.memory_estimate(st, p, len(xyz), avail=20)
+        e1 = relief.memory_estimate(st, relief.Params(mode='objeto', ratio=1.0, res=14.0, ground=True), len(xyz),
+                                    avail=20)
+        self.assertAlmostEqual(e1['cells'], relief.MEM_GROUND * e0['cells'])
+        self.assertGreater(e1['gb'], e0['gb'])
+        big = relief.memory_estimate(dict(st, mesh_tris=60e6), p, len(xyz), avail=20)
+        self.assertAlmostEqual(big['gb'], relief.MEM_BASE_GB + 60e6 * relief.MEM_READ_PER_TRI, places=3)
+        self.assertIn('leer la malla', big['detail'])
+        old = relief.memory_available
+        try:                                       # simplificar 5 M triángulos en 8 procesos: según lo que haya
+            relief.memory_available = lambda: (20.0, 32.0)
+            self.assertEqual(relief.dec_workers_fit(5_000_000, 8), 8)
+            relief.memory_available = lambda: (4.0, 32.0)
+            self.assertEqual(relief.dec_workers_fit(5_000_000, 8), 1)   # no caben ni dos: en un solo proceso
+            relief.memory_available = lambda: (4.5, 32.0)          # 2,5 GB tras el margen: 2,1 de franjas y 3 Pythons
+            self.assertEqual(relief.dec_workers_fit(5_000_000, 8), 3)
+        finally:
+            relief.memory_available = old
 
 
 def _write(path, text):

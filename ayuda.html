@@ -1406,7 +1406,15 @@ sugeridas (por ejemplo <code>--res 2.0</code>).</p>
 </table>
 <p>En el mapa de alturas: unos 1,1 GB fijos + 42 bytes por punto + 0,47 GB por millón de triángulos antes de
 simplificar. En modo 3D pesa sobre todo la profundidad de Poisson: cada nivel más multiplica el detalle por dos y la
-memoria por 1,6 o más (las profundidades 11 a 13 están extrapoladas).</p>
+memoria por 1,6 o más (las profundidades 11 a 13 están extrapoladas). Con <i>Abierto por abajo</i>, la base y las
+paredes que se añaden también pasan por Poisson y cuentan ×1,6 (medido en un terreno de 35 × 15 m: había tanta
+superficie añadida como escaneada). Si la nube es una malla (OBJ, STL), el proceso de cálculo la vuelve a leer: con
+mallas muy grandes y ajustes ligeros, leerla es lo que más ocupa (unos 0,12 GB por millón de triángulos).</p>
+<p><b>Si el programa se cierra solo.</b> Cuando el equipo se queda sin memoria (y sin swap), el sistema cierra el
+proceso que más ocupa. Para que no sea la ventana, en Linux los procesos de cálculo se marcan como los primeros a
+cerrar: se pierde la generación, pero la ventana sigue y avisa. Además, la ventana vigila la memoria libre cada
+0,1 s y para la generación antes de llegar ahí, y la simplificación lanza menos procesos a la vez si no caben todos.
+Los OBJ y STL se leen por bloques (un OBJ de 2,5 GB ocupa unos 2 GB al leerlo; antes, más de 8).</p>
 
 <!-- ============================================================ -->
 <h2 id="salida">5. Formatos y archivos</h2>

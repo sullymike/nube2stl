@@ -58,6 +58,7 @@ def load_result(path):
 
 
 def main(ply, params_json, out):
+    relief.lower_priority_for_oom()
     # la interfaz lee esta salida en UTF-8 (en Windows la consola usaría cp1252 y fallaría con «≈», «→», «°»)
     sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
     log = lambda s: print(s, flush=True)  # noqa: E731

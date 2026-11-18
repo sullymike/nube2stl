@@ -862,6 +862,13 @@ MEM_PER_TRI = 0.47e-6             # GB por triángulo del mapa de alturas antes 
                                   # en paralelo y medida del error)
 TRIS_PER_CELL = 3.5               # triángulos por celda del rectángulo de la cara (paredes, base y bordes incluidos)
 MEM_PER_POINT_3D = 110e-9         # modo 3D: GB por punto (submuestreo, normales y limpieza con Open3D)
+MEM_READ_PER_TRI = 0.12e-6           # leer una malla (OBJ, STL, PLY): GB por triángulo (medido: OBJ de 19 M
+                                  # triángulos 2,2 GB, STL 1,6 GB)
+MEM_GROUND = 1.6                  # «Abierto por abajo»: base y paredes sintéticas (medido: ×1,3 a ×1,6 en un terreno
+                                  # de 35 × 15 m, con tanta superficie de base y paredes como escaneada)
+DEC_WORKER_GB = 0.11              # cada proceso de simplificación: Python y PyMeshLab
+DEC_PER_TRI_GB = 0.42e-6          # y su franja, por triángulo (medido con 0,18 y 0,98 M)
+MEM_SPARE_GB = 2.0                # lo que se deja libre al decidir cuántos procesos de simplificación lanzar
 MEM_PER_CELL_3D = {9: 2.7e-6, 10: 4.3e-6, 11: 6.9e-6, 12: 11e-6, 13: 17.6e-6}   # GB por celda según profundidad
                                   # (9 y 10 medidas; 11–13 extrapoladas ×1,6 por nivel)
 
@@ -1024,6 +1031,8 @@ def memory_estimate(stats, prm, npoints, avail=None):
                                                     else MEM_PER_CELL_3D[9] / 1.6 ** (9 - depth))
         if prm.mode == 'bloque':      # los laterales añaden superficie (perímetro × grosor), aprox. un 30 %
             cells *= 1.3
+        if prm.mode == 'objeto' and prm.ground:   # la base y las paredes también pasan por Poisson
+            cells *= MEM_GROUND
         gb = MEM_BASE_GB + MEM_PER_POINT_3D * npoints + per_cell * cells
         detail = f'{npoints / 1e6:.1f} M puntos, {cells / 1e6:.2f} M celdas, Poisson a profundidad {depth}'
     else:
@@ -1034,6 +1043,10 @@ def memory_estimate(stats, prm, npoints, avail=None):
         tris = TRIS_PER_CELL * cells
         gb = MEM_BASE_GB + MEM_PER_POINT * npoints + MEM_PER_TRI * tris
         detail = f'{npoints / 1e6:.1f} M puntos, ≈ {tris / 1e6:.1f} M triángulos antes de simplificar'
+    mt = float(stats.get('mesh_tris', 0) or 0)       # una malla se vuelve a leer en el proceso de cálculo
+    if mt and MEM_BASE_GB + MEM_READ_PER_TRI * mt > gb:
+        gb = MEM_BASE_GB + MEM_READ_PER_TRI * mt
+        detail += f'; leer la malla de {mt / 1e6:.1f} M triángulos es lo que más ocupa'
     av, total = memory_available()
     if avail is not None:
         av = avail
@@ -2013,11 +2026,39 @@ def _decimate_mesh(V, T, vcol, target, workers, log=lambda s: None):
     return (out[0] / k + c, out[1], out[2])
 
 
+def dec_workers_fit(ntris, workers):
+    """Cuántos procesos de simplificación caben en la memoria libre ahora (cada uno con su franja), dejando
+    MEM_SPARE_GB; con 8 a la vez, una malla de 5 M triángulos pedía casi 2 GB más que en un solo proceso."""
+    av, _ = memory_available()
+    if av is None:
+        return workers
+    for w in range(workers, 1, -1):
+        if w * (DEC_WORKER_GB + DEC_PER_TRI_GB * ntris / w) <= av - MEM_SPARE_GB:
+            return w
+    return 1
+
+
+def lower_priority_for_oom():
+    """Linux: si el sistema se queda sin memoria, que el núcleo cierre antes este proceso de cálculo que la
+    ventana (por defecto elige el que más ocupa, y la ventana con una nube grande puede ser ese)."""
+    try:
+        with open('/proc/self/oom_score_adj', 'w') as f:
+            f.write('1000')
+    except OSError:
+        pass
+
+
 def _decimate_mesh_n(V, T, vcol, target, workers, log=lambda s: None):
     import pymeshlab
     out = None
     bad0 = _bad_edges(T, len(V))                           # una superficie abierta ya trae su borde
     workers = min(workers, len(T) // MIN_TRIS_PER_STRIP)   # franjas demasiado finas no compensan
+    if workers > 1:
+        fit = dec_workers_fit(len(T), workers)
+        if fit < workers:
+            log(f'Poca memoria libre: la simplificación se hace en {max(fit, 1)} proceso{"s" if fit > 1 else ""} '
+                f'en vez de {workers}')
+            workers = fit
     if workers > 1:
         try:
             out = _decimate_parallel(V, T, vcol, target / len(T), workers)

@@ -27,33 +27,63 @@ MESH_MAX_POINTS = 8_000_000
 
 
 # ------------------------------------------------------------------ mallas -> puntos
-def sample_mesh(V, F, vcol=None, uvcol=None, n=None):
+CHUNK_TRIS = 2_000_000                        # triángulos por bloque al muestrear una malla (memoria acotada)
+
+
+def sample_mesh(V, F, vcol=None, uvcol=None, n=None, tris=None, nverts=None):
     """Puntos repartidos por la superficie de una malla (proporcional al área), con la normal del triángulo.
-    vcol: color por vértice (N,3) uint8; uvcol: función (tri, bary) -> color (para texturas)."""
-    V = np.asarray(V, np.float64)
-    F = np.asarray(F, np.int64)
-    t = V[F]
-    cr = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
-    a2 = np.linalg.norm(cr, axis=1)
-    ok = a2 > 0
-    F, t, cr, a2 = F[ok], t[ok], cr[ok], a2[ok]
-    if n is None:
+    vcol: color por vértice (N,3) uint8; uvcol: función (tri, bary) -> color (para texturas); tri son índices de F.
+    tris: en vez de V y F, los triángulos sueltos (n,3,3) (un STL, sin unir vértices); nverts: cuántos vértices
+    tendría (para el número de puntos; por defecto, la mitad de los triángulos, lo de una malla cerrada).
+    Por bloques de CHUNK_TRIS triángulos y sin copias de toda la malla: con 19 M triángulos, la versión anterior
+    (V[F] entero en float64, filtrado y copiado) pasaba de 5 GB solo en esto."""
+    if tris is not None:
+        nt = len(tris)
+        get = lambda idx: np.asarray(tris[idx], np.float64)                     # noqa: E731
+        nv = int(nverts) if nverts else max(nt // 2, 1)
+    else:
+        V = np.asarray(V)
+        F = np.asarray(F)
+        if F.dtype != np.int32 and len(V) < 2**31:
+            F = F.astype(np.int32)
+        nt = len(F)
+        get = lambda idx: V[F[idx]].astype(np.float64)                          # noqa: E731
+        nv = len(V)
+    a2 = np.empty(nt, np.float64)                  # doble del área de cada triángulo
+    for i in range(0, nt, CHUNK_TRIS):
+        t = get(slice(i, i + CHUNK_TRIS))
+        a2[i:i + len(t)] = np.linalg.norm(np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]), axis=1)
+    rng = np.random.default_rng(0)
+    if n is None:                                  # lado típico: mediana de una muestra de aristas
+        k = np.sort(rng.choice(nt, 1_000_000, replace=False)) if nt > 1_000_000 else np.arange(nt)
+        t = get(k)
         e = np.linalg.norm(t[:, 1] - t[:, 0], axis=1)
         med = float(np.median(e[e > 0])) if (e > 0).any() else 1.0
-        n = int(np.clip(4 * a2.sum() / 2 / med ** 2, len(V), MESH_MAX_POINTS))
-    rng = np.random.default_rng(0)
+        n = int(np.clip(4 * a2.sum() / 2 / med ** 2, nv, MESH_MAX_POINTS))
     cdf = np.cumsum(a2)
-    tri = np.searchsorted(cdf, rng.random(n) * cdf[-1]).clip(max=len(F) - 1)
+    del a2
+    tri = np.searchsorted(cdf, rng.random(n) * cdf[-1], side='right').clip(max=nt - 1)
+    del cdf
     r1, r2 = rng.random(n), rng.random(n)
     s1 = np.sqrt(r1)
     b = np.c_[1 - s1, s1 * (1 - r2), s1 * r2]
-    P = np.einsum('ij,ijk->ik', b, t[tri]).astype(np.float32)
-    N = (cr[tri] / a2[tri, None]).astype(np.float32)
+    del r1, r2, s1
+    P = np.empty((n, 3), np.float32)
+    N = np.empty((n, 3), np.float32)
+    for i in range(0, n, CHUNK_TRIS):
+        sl = slice(i, i + CHUNK_TRIS)
+        t = get(tri[sl])
+        cr = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+        P[sl] = np.einsum('ij,ijk->ik', b[sl], t)
+        N[sl] = cr / np.maximum(np.linalg.norm(cr, axis=1), 1e-300)[:, None]
     col = None
     if uvcol is not None:
         col = uvcol(tri, b)
-    elif vcol is not None:
-        col = np.einsum('ij,ijk->ik', b, vcol[F[tri]].astype(np.float32)).round().clip(0, 255).astype(np.uint8)
+    elif vcol is not None and tris is None:
+        col = np.empty((n, 3), np.uint8)
+        for i in range(0, n, CHUNK_TRIS):
+            sl = slice(i, i + CHUNK_TRIS)
+            col[sl] = np.einsum('ij,ijk->ik', b[sl], vcol[F[tri[sl]]].astype(np.float32)).round().clip(0, 255)
     return P, col, N
 
 
@@ -108,55 +138,188 @@ def _ply_faces(path, nv):
 
 
 def _stl(path):
+    """STL: los triángulos sueltos, tal cual (para repartir puntos no hace falta unir los vértices repetidos, y
+    unirlos con np.unique costaba varios GB y casi todo el tiempo de lectura en una malla grande)."""
     with open(path, 'rb') as f:
         head = f.read(84)
         n = int(np.frombuffer(head[80:84], '<u4')[0]) if len(head) == 84 else 0
         size = os.path.getsize(path)
         if len(head) == 84 and 84 + 50 * n == size:
             rec = np.fromfile(f, dtype=[('n', '<f4', 3), ('v', '<f4', (3, 3)), ('a', '<u2')], count=n)
-            T = rec['v'].reshape(-1, 3)
+            T = np.ascontiguousarray(rec['v'])
+            del rec
         else:
             import re
             f.seek(0)
             txt = f.read().decode('ascii', 'replace')
-            T = np.array(re.findall(r'vertex\s+(\S+)\s+(\S+)\s+(\S+)', txt), float).reshape(-1, 3)
-    # unir vértices repetidos (el STL guarda cada triángulo por separado)
-    V, inv = np.unique(T, axis=0, return_inverse=True)
-    return dict(V=V, F=inv.reshape(-1, 3))
+            T = np.array(re.findall(r'vertex\s+(\S+)\s+(\S+)\s+(\S+)', txt), np.float32).reshape(-1, 3, 3)
+    return dict(T=T)
+
+
+OBJ_BLOCK = 128 * 2**20                       # bytes de texto por bloque al leer un OBJ
+
+
+def _obj_texture(path):
+    """(imagen RGB uint8, nombre) de la textura del OBJ (map_Kd del primer material con imagen), o (None, motivo)."""
+    folder = os.path.dirname(os.path.abspath(path))
+    mtl = None
+    with open(path, 'rb') as f:
+        for _ in range(2000):
+            line = f.readline()
+            if not line:
+                break
+            if line.startswith(b'mtllib'):
+                mtl = line.split(None, 1)[1].strip().decode('utf-8', 'replace')
+                break
+    if not mtl:
+        return None, None
+    mp = os.path.join(folder, mtl)
+    if not os.path.exists(mp):
+        return None, f'falta {mtl}'
+    maps = []
+    with open(mp, 'r', errors='replace') as f:
+        for line in f:
+            t = line.strip().split(None, 1)
+            if len(t) == 2 and t[0].lower() == 'map_kd':
+                maps.append(t[1].split()[-1])
+    if not maps:
+        return None, None
+    ip = os.path.join(folder, maps[0])
+    if not os.path.exists(ip):
+        return None, f'falta {maps[0]}'
+    try:
+        from PIL import Image
+        Image.MAX_IMAGE_PIXELS = None
+        img = np.asarray(Image.open(ip).convert('RGB'))
+    except Exception as e:                    # noqa: BLE001
+        return None, f'no se pudo abrir {maps[0]} ({e})'
+    return img, maps[0] + (f' (de {len(maps)} texturas, solo la primera)' if len(maps) > 1 else '')
 
 
 def _obj(path):
-    try:
-        import open3d as o3d
-    except ImportError:
+    """OBJ por bloques de texto con NumPy, sin pasar por objetos de Python por línea: un OBJ de 2,5 GB (10 M
+    vértices con color, 19 M triángulos) se lee con la memoria de los vértices y triángulos, cuando Open3D pasaba
+    de 8 GB. Color por vértice (v x y z r g b) y textura (vt y map_Kd del .mtl, la primera imagen)."""
+    img, why = _obj_texture(path)
+    want_uv = img is not None
+    Vs, Fs, VTs, FTs = [], [], [], []
+    nv = 0
+    width = None                              # números por línea «v» (3, o 6 con color)
+    with open(path, 'rb') as f:
+        rest = b''
+        while True:
+            chunk = f.read(OBJ_BLOCK)
+            if not chunk and not rest:
+                break
+            data = rest + chunk
+            if chunk:
+                cut = data.rfind(b'\n') + 1
+                if cut == 0:
+                    rest = data
+                    continue
+                data, rest = data[:cut], data[cut:]
+            else:
+                rest = b''
+            lines = data.split(b'\n')
+            del data
+            vl = [ln[2:] for ln in lines if ln.startswith(b'v ')]
+            fl = [ln[2:] for ln in lines if ln.startswith(b'f ')]
+            tl = [ln[3:] for ln in lines if ln.startswith(b'vt ')] if want_uv else []
+            del lines
+            if vl:
+                if width is None:
+                    width = len(vl[0].split())
+                arr = np.fromstring(b' '.join(vl), sep=' ')
+                if arr.size != len(vl) * width:          # anchos distintos: línea a línea, con los 3 primeros
+                    arr = np.array([[float(x) for x in ln.split()[:3]] for ln in vl])
+                    width = 3 if width != 3 else width
+                    if Vs and Vs[0].shape[1] != 3:
+                        Vs = [v[:, :3] for v in Vs]
+                arr = arr.reshape(len(vl), -1)
+                if Vs and arr.shape[1] != Vs[0].shape[1]:
+                    arr = arr[:, :3]
+                    Vs = [v[:, :3] for v in Vs]
+                Vs.append(arr)
+                del vl
+            if tl:
+                VTs.append(np.array([[float(x) for x in ln.split()[:2]] for ln in tl])
+                           if len(tl) < 1000 else _obj_uv_block(tl))
+            if fl:
+                F, FT = _obj_faces(fl, want_uv)
+                del fl
+                cur, curt = sum(len(v) for v in Vs), sum(len(v) for v in VTs)
+                F[F < 0] += cur + 1                      # índices relativos (-1 = el último vértice leído)
+                Fs.append(F)
+                if FT is not None:
+                    FT[FT < 0] += curt + 1
+                    FTs.append(FT)
+            nv = sum(len(v) for v in Vs)
+    if not Vs or not Fs:
         return _obj_python(path)
-    m = o3d.io.read_triangle_mesh(path, enable_post_processing=False)
-    V, F = np.asarray(m.vertices), np.asarray(m.triangles)
-    if not len(F):
-        return _obj_python(path)
-    out = dict(V=V, F=F)
-    if m.has_vertex_colors():
-        out['vcol'] = (np.asarray(m.vertex_colors) * 255).round().clip(0, 255).astype(np.uint8)
-    if m.has_triangle_uvs() and len(m.textures) and not m.textures[0].is_empty():
-        uv = np.asarray(m.triangle_uvs).reshape(-1, 3, 2)
-        mids = np.asarray(m.triangle_material_ids) if m.has_triangle_material_ids() else np.zeros(len(F), int)
-        tex = [np.asarray(t) for t in m.textures]
+    V = np.concatenate(Vs)
+    del Vs
+    F = np.concatenate(Fs) - 1
+    del Fs
+    if F.min() < 0 or F.max() >= nv:
+        raise ValueError('OBJ con caras que apuntan a vértices que no existen')
+    out = dict(V=np.ascontiguousarray(V[:, :3]), F=F.astype(np.int32 if nv < 2**31 else np.int64))
+    if V.shape[1] >= 6:
+        c = V[:, 3:6]
+        out['vcol'] = (c * 255 if c.max() <= 1 else c).round().clip(0, 255).astype(np.uint8)
+    del V
+    if want_uv and VTs and FTs and sum(len(x) for x in FTs) == len(F):
+        uv = np.concatenate(VTs).astype(np.float32)
+        ft = np.concatenate(FTs) - 1
+        h, w = img.shape[:2]
 
         def uvcol(tri, b):
-            u = np.einsum('ij,ijk->ik', b, uv[tri])
-            col = np.zeros((len(tri), 3), np.uint8)
-            for k, img in enumerate(tex):
-                sel = mids[tri] == k
-                if not sel.any() or img.size == 0:
-                    continue
-                h, w = img.shape[:2]
-                x = (np.mod(u[sel, 0], 1) * (w - 1)).round().astype(int)
-                y = ((1 - np.mod(u[sel, 1], 1)) * (h - 1)).round().astype(int)
-                c = img[y, x]
-                col[sel] = (c[:, :3] if c.ndim == 2 else np.repeat(c[:, None], 3, 1))
+            col = np.empty((len(tri), 3), np.uint8)
+            for i in range(0, len(tri), CHUNK_TRIS):
+                sl = slice(i, i + CHUNK_TRIS)
+                u = np.einsum('ij,ijk->ik', b[sl], uv[ft[tri[sl]]])
+                x = (np.mod(u[:, 0], 1) * (w - 1)).round().astype(int)
+                y = ((1 - np.mod(u[:, 1], 1)) * (h - 1)).round().astype(int)
+                col[sl] = img[y, x]
             return col
         out['uvcol'] = uvcol
+        out['note'] = f'color de la textura {why}'
+    elif why:
+        out['note'] = f'sin la textura: {why}'
     return out
+
+
+def _obj_uv_block(tl):
+    arr = np.fromstring(b' '.join(tl), sep=' ')
+    if arr.size == 2 * len(tl):
+        return arr.reshape(-1, 2)
+    if arr.size == 3 * len(tl):
+        return arr.reshape(-1, 3)[:, :2]
+    return np.array([[float(x) for x in ln.split()[:2]] for ln in tl])
+
+
+def _obj_faces(fl, want_uv):
+    """Caras de un bloque de líneas «f» (sin el «f »): (F (n,3) índices desde 1, FT índices de vt o None).
+    Lo normal (todas triángulos con el mismo formato v, v/t, v//n o v/t/n) va de una vez con NumPy; si no,
+    línea a línea, abriendo los polígonos en abanico."""
+    first = fl[0].split()
+    tok = first[0]
+    m = tok.count(b'/') + 1 - tok.count(b'//')            # números por vértice
+    has_t = b'/' in tok and b'//' not in tok and tok.split(b'/')[1] != b''
+    if all(len(ln.split()) == 3 for ln in fl[:1000]) and len(first) == 3:
+        arr = np.fromstring(b' '.join(fl).replace(b'//', b' ').replace(b'/', b' '), sep=' ')
+        if arr.size == len(fl) * 3 * m:
+            arr = arr.reshape(len(fl), 3, m).astype(np.int64)
+            return arr[:, :, 0], (arr[:, :, 1] if (want_uv and has_t) else None)
+    F, FT = [], []
+    for ln in fl:
+        idx = [t.split(b'/') for t in ln.split()]
+        vi = [int(t[0]) for t in idx]
+        ti = [int(t[1]) if len(t) > 1 and t[1] else 0 for t in idx]
+        for k in range(1, len(vi) - 1):
+            F.append((vi[0], vi[k], vi[k + 1]))
+            FT.append((ti[0], ti[k], ti[k + 1]))
+    FT = np.array(FT, np.int64)
+    return np.array(F, np.int64).reshape(-1, 3), (FT if (want_uv and has_t and (FT != 0).all()) else None)
 
 
 def _obj_python(path):
@@ -328,6 +491,20 @@ def read_any(path, log=lambda s: None):
             read_any.units = 'mm'
     read_any.origin = None                    # origen restado a las coordenadas georreferenciadas (unidades del fichero)
     read_any.classes = None                   # clase de cada punto (LAS), o None
+    read_any.tris = 0                         # triángulos de la malla leída (para la estimación de memoria)
+    if 'T' in d:                              # triángulos sueltos (STL)
+        T = d['T']
+        c = np.floor(np.median(T[:: max(1, len(T) // 100_000), 0].astype(np.float64), 0)) if len(T) else np.zeros(3)
+        if np.abs(c).max() > 1e4:
+            log(f'Coordenadas grandes (georreferenciadas): se resta el origen {c[0]:.0f}, {c[1]:.0f}, {c[2]:.0f}')
+            read_any.origin = c
+            for i in range(0, len(T), CHUNK_TRIS):          # en float64 por bloques y de vuelta a float32
+                T[i:i + CHUNK_TRIS] = (T[i:i + CHUNK_TRIS].astype(np.float64) - c).astype(np.float32)
+        read_any.tris = len(T)
+        P, rgb, nrm = sample_mesh(None, None, tris=T)
+        log(f'Malla de {len(T):,} triángulos: {len(P):,} puntos repartidos por su superficie (con las normales de '
+            f'la malla)')
+        return P, rgb, nrm, 'malla'
     if 'F' in d:
         V, F = np.asarray(d['V'], np.float64), d['F']
         # malla georreferenciada (UTM en metros, típica de fotogrametría): restar el centro antes de pasar a float32,
@@ -337,9 +514,12 @@ def read_any(path, log=lambda s: None):
             log(f'Coordenadas grandes (georreferenciadas): se resta el origen {c[0]:.0f}, {c[1]:.0f}, {c[2]:.0f}')
             V = V - c
             read_any.origin = c
+        read_any.tris = len(F)
         P, rgb, nrm = sample_mesh(V, F, d.get('vcol'), d.get('uvcol'))
         log(f'Malla de {len(V):,} vértices y {len(F):,} triángulos: {len(P):,} puntos repartidos por su superficie'
             f' (con las normales de la malla' + (', y su color)' if rgb is not None else ')'))
+        if d.get('note'):
+            log(f'OBJ: {d["note"]}')
         return P, rgb, nrm, 'malla'
     xyz = d['xyz']
     if d.get('big'):
@@ -608,7 +788,7 @@ def load_points(path, prm=None, log=lambda s: None, mark_only=False):
         units = read_any.units
         log(f'Unidades escritas en el fichero: {units}')
     xyz, u, f = to_mm(xyz, units, log)
-    info = {'kind': kind, 'units': u, 'factor': f, 'removed': 0, 'guessed': units not in UNITS, 'keep': None,
+    info = {'kind': kind, 'mesh_tris': int(getattr(read_any, 'tris', 0) or 0), 'units': u, 'factor': f, 'removed': 0, 'guessed': units not in UNITS, 'keep': None,
             'origin_mm': [float(x) * f for x in origin] if origin is not None else [0.0, 0.0, 0.0]}
     xyz, rgb, nrm = _filter_classes(xyz, rgb, nrm, cls, prm, info, log)
     merges = getattr(prm, 'merge', None) if prm is not None else None

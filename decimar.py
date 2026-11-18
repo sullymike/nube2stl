@@ -13,7 +13,8 @@ import pymeshlab  # noqa: E402
 
 
 def main(fin, fout, target):
-    from relief import _decimate
+    from relief import _decimate, lower_priority_for_oom
+    lower_priority_for_oom()
     d = np.load(fin)
     kw = {'v_color_matrix': d['c']} if 'c' in d else {}
     ms = pymeshlab.MeshSet()

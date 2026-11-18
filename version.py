@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.25.0'
+__version__ = '0.25.1'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,15 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.25.1', 'noviembre 2026', [
+        'Memoria: los OBJ y STL grandes se leen por bloques (un OBJ de 2,5 GB y 19 M triángulos pasaba de 8 GB al '
+        'leerlo, en la propia ventana; ahora unos 2 GB y la ventana se queda en 0,7 GB). La textura del OBJ sigue '
+        'leyéndose (la primera imagen del .mtl)',
+        'Memoria: la estimación cuenta la base y las paredes de «Abierto por abajo» y volver a leer la malla; antes se '
+        'quedaba hasta un 40 % corta en esos casos',
+        'Memoria: si el equipo se queda sin memoria, el sistema cierra antes el cálculo que la ventana (Linux); la '
+        'simplificación lanza menos procesos a la vez si no caben, y el vigilante de memoria mira cada 0,1 s',
+    ]),
     ('0.25.0', 'noviembre 2026', [
         'Zonas de detalle también en el mapa de alturas (relieve, curvo, grabado): la rejilla se parte en celdas más '
         'finas y la parte pintada se hace con los puntos de la zona, con la misma forma de la roca que el resto y '
