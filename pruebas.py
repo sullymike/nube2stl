@@ -1227,6 +1227,22 @@ class ZonasDetalle(unittest.TestCase):
         self.assertIn('solo cuentan', nube2stl.plan_html(st, p))
 
 
+    def test_nota_de_avanzado(self):
+        """La nota bajo «Resolución de las zonas»: celda dentro y fuera y si Poisson llega a ella."""
+        import nube2stl
+        st = relief.face_stats(rock(n=30_000), relief.Params(mode='objeto'))
+        p = relief.Params(mode='objeto', target='real', res=4.0)
+        self.assertIn('no hay ninguna zona', nube2stl.zone_note(st, p))
+        p.detail, p.detail_res = [self.zone()], 1.0
+        t = nube2stl.zone_note(st, p)
+        self.assertIn('celda de 1 mm', t)
+        self.assertIn('automática', t)
+        p.poisson_depth = 6                                         # a mano y demasiado baja: avisa
+        self.assertIn('no llega a su celda', nube2stl.zone_note(st, p))
+        p.poisson_depth, p.detail_res = 0, 8.0                      # más gruesa que la general: sin efecto
+        self.assertIn('no cambian nada', nube2stl.zone_note(st, p))
+
+
 class ZonasDetalle3D(unittest.TestCase):
     """Reconstrucción con una zona de detalle: dentro sale mucho más fiel, fuera igual."""
 

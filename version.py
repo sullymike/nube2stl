@@ -15,6 +15,11 @@ HISTORY = [
         'quita de las zonas lo que se toca',
         'Ctrl + botón izquierdo gira la vista sin soltar el recorte o el pincel; «Sin recortes» se llama ahora '
         '«Quitar todo»',
+        'Avanzado › Malla: «Resolución de las zonas» va justo debajo de «Resolución» y lleva debajo una nota con la '
+        'celda dentro y fuera de las zonas y la profundidad de Poisson que sale de ella (avisa si no hay zonas, si '
+        'no cambian nada o si la profundidad puesta a mano no llega)',
+        'El panel Avanzado ya no se sale por la derecha cuando la impresora tiene un nombre largo (no se veían los '
+        'botones «?»)',
     ]),
     ('0.23.0', 'noviembre 2026', [
         'Recorte con lazo: junto a ✂ Recortar se elige rectángulo o lazo; el lazo se dibuja a mano alzada alrededor '

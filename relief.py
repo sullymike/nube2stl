@@ -846,10 +846,29 @@ def poisson_depth_auto(stats, prm, res, ext=None):
     """La misma profundidad automática que usan los modos 3D y objeto, a partir del tamaño de la cara (o del
     objeto, o de ext si se da). Con zonas de detalle, res es la de las zonas."""
     if ext is None:
-        ext = (max(_object_extents(stats['obj'], prm)) if prm.mode == 'objeto' and 'obj' in stats
-               else max(stats['length'], stats['width']))
+        ext = poisson_ext(stats, prm)
     hi = DEPTH_MAX_ZONES if has_detail(prm) else DEPTH_MAX
     return int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, hi))
+
+
+def poisson_ext(stats, prm):
+    """Tamaño (unidades de la nube) que reparte el octree de Poisson."""
+    return (max(_object_extents(stats['obj'], prm)) if prm.mode == 'objeto' and 'obj' in stats
+            else max(stats['length'], stats['width']))
+
+
+def octree_cell(ext, depth):
+    """Lo más fino que llega Poisson con esa profundidad (el lado de la celda más pequeña del octree)."""
+    return ext * 1.1 / 2 ** depth
+
+
+def zone_poisson(stats, prm, rf):
+    """Profundidad de Poisson con zonas de detalle de celda rf: (profundidad, automática, celda del octree,
+    profundidad automática). La automática es la que llega a la celda de las zonas (como mucho DEPTH_MAX_ZONES)."""
+    ext = poisson_ext(stats, prm)
+    auto = poisson_depth_auto(stats, prm, rf, ext=ext)
+    d = prm.poisson_depth or auto
+    return d, not prm.poisson_depth, octree_cell(ext, d), auto
 
 
 # ------------------------------------------------------------------ zonas de detalle

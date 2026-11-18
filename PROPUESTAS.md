@@ -426,6 +426,11 @@ que el resto.
     de otra: solo se pinta la de delante, en una franja del ancho del pincel). En la ventana, un trazo grueso sobre
     el bloque de ejemplo y uno de borrar que lo corta: 9,9 % de la nube en la zona; en la malla, triángulos de
     1,7 mm dentro y 3,3 mm fuera.
+  - Después (a petición del usuario: los ajustes se quedan en el panel de la izquierda, no en la barra del
+    pincel): «Resolución de las zonas» va justo debajo de «Resolución» y lleva una nota (`nube2stl.zone_note`)
+    con la celda dentro y fuera, y la profundidad de Poisson (`relief.zone_poisson`: la automática sale de la celda
+    de las zonas, máximo 12; con una a mano demasiado baja avisa y propone la automática). Arreglado de paso: el
+    desplegable de impresora ensanchaba Avanzado a 739 px en un panel de 338 y los «?» quedaban fuera.
 
 ---
 

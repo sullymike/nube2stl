@@ -341,14 +341,16 @@ SPEC = [
     ('Malla', [
         ('res', 'Resolución', 'f', dict(lo=0, hi=100, step=0.5, dec=2, suf='mm', special='automática'),
          'Tamaño de celda en la nube. Automática: la que pide la boquilla o la que permite el escaneo (la mayor).'),
+        ('detail_res', 'Resolución de las zonas', 'f', dict(lo=0, hi=100, step=0.1, dec=2, suf='mm',
+                                                             special='la del escaneo'),
+         'Celda dentro de las zonas de detalle, lo pintado con 🖌 Zona de detalle en la vista de la nube\n'
+         '(fuera se usa «Resolución»). Un solo valor para todas las zonas. Solo tipos con Poisson.\n'
+         'La del escaneo: el detalle máximo que tiene la nube. Debajo se ve la celda dentro y fuera\n'
+         'y la profundidad de Poisson que hace falta para llegar a ella.'),
         ('simplify', 'Simplificar', 'f', dict(lo=0, hi=100, step=5, dec=1, suf='%', special='automático'),
          'Automático: todo lo que la impresora no notaría (según Calidad). O un % fijo de triángulos (100 = no).'),
         ('poisson_depth', 'Profundidad Poisson', 'i', dict(lo=0, hi=13, special='automática'),
          'Solo modo 3D. Detalle del octree: +1 = doble de detalle y ~4× memoria.'),
-        ('detail_res', 'Resolución de las zonas', 'f', dict(lo=0, hi=100, step=0.1, dec=2, suf='mm',
-                                                             special='la del escaneo'),
-         'Celda dentro de las zonas de detalle (🖌 Zona de detalle, en la vista de la nube).\n'
-         'Solo tipos con Poisson. La del escaneo: el detalle máximo que tiene la nube.'),
         ('front_pct', 'Percentil frente', 'f', dict(lo=0, hi=100, step=5, dec=0, suf='%'),
          'Qué punto de cada celda se toma: 100 = el más saliente, 90 = robusto a puntos sueltos.'),
         ('min_pts', 'Puntos mín./celda', 'i', dict(lo=1, hi=1000), 'Puntos necesarios para que una celda sea parte de la pieza.'),
@@ -473,6 +475,47 @@ def zone_text(r):
 def plan_html(st, prm):
     """Resumen del cálculo de impresión (lo usan la pestaña Tamaño y el asistente)."""
     return _plan_html(st, prm) + detail_html(st, prm)
+
+
+def zone_note(st, prm):
+    """Bajo «Resolución de las zonas» (Avanzado): la celda dentro y fuera de las zonas y la profundidad de Poisson
+    que hace falta para llegar a ella."""
+    f = lambda x: f'{x:.3g}'.replace('.', ',')                            # noqa: E731
+    warn = lambda t: f'<span style="color:{C["accent_dk"]}">⚠ {t}</span>'  # noqa: E731
+    n = relief.zone_count(getattr(prm, 'detail', None))[0]
+    if not n:
+        return ('Solo cuenta donde se haya pintado con <b>🖌 Zona de detalle</b> en la vista de la nube. Ahora no '
+                'hay ninguna zona.')
+    if not relief.has_detail(prm):
+        return 'Las zonas de detalle solo cuentan en objeto, terreno, bloque y 3d.'
+    try:
+        pl = relief.print_plan(st, prm)
+    except Exception:                                  # noqa: BLE001  solo es una nota
+        return ''
+    s = pl['scale']
+    rf = relief.zone_res(prm, pl['res'], pl['res_scan'])
+    out = f'Fuera de las zonas: celda de {f(pl["res"])} mm ({f(pl["res"] * s)} mm en la pieza), la de «Resolución».'
+    if rf is None:
+        why = ('la general ya es la del escaneo y la nube no tiene más detalle' if prm.detail_res <= 0 else
+               'este valor no es más fino que la «Resolución» general')
+        fix = ('sirven cuando la «Resolución» general es más gruesa' if prm.detail_res <= 0 else
+               'baja este valor o sube la «Resolución» general')
+        return out + '<br>' + warn(f'Dentro, la misma: {why}. Las zonas no cambian nada; {fix}.')
+    out = (f'<b>Dentro de las zonas ({n}): celda de {f(rf)} mm</b> ({f(rf * s)} mm en la pieza)'
+           f'{", la del escaneo" if prm.detail_res <= 0 else ""}.<br>' + out)
+    d, auto, cell, d_auto = relief.zone_poisson(st, prm, rf)
+    ok = cell <= 1.25 * rf * 1.01
+    if auto and ok:
+        out += f'<br>Poisson: profundidad {d} (automática, sale de esta celda; sin zonas sería menor).'
+    elif auto:
+        out += '<br>' + warn(f'Poisson: profundidad {d}, la máxima: con una pieza tan grande no baja de '
+                             f'{f(cell / 1.25)} mm, así que una celda más fina no se nota.')
+    elif ok:
+        out += f'<br>Poisson: profundidad {d} (a mano) basta para esta celda (la automática sería {d_auto}).'
+    else:
+        out += '<br>' + warn(f'Poisson: con la profundidad {d} (a mano) no baja de {f(cell / 1.25)} mm y la zona no '
+                             f'llega a su celda. Déjala en automática (saldría {d_auto}).')
+    return out
 
 
 def detail_html(st, prm):
@@ -1668,6 +1711,10 @@ class MainWindow(QMainWindow):
                                                'Studio, PrusaSlicer o Cura) y modelos habituales. Rellena boquilla, '
                                                'capa y cama; «A mano» deja los valores de abajo.')
                     self.printer_cb.activated.connect(self._printer_chosen)
+                    # los nombres largos de los laminadores no deben ensanchar el panel (se cortan; la lista se
+                    # abre con su ancho)
+                    self.printer_cb.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                    self.printer_cb.setMinimumContentsLength(6)
                     holder = QWidget()
                     row = QHBoxLayout(holder)
                     row.setContentsMargins(0, 0, 0, 0)
@@ -1748,6 +1795,13 @@ class MainWindow(QMainWindow):
                         self.boost_lbl.setTextFormat(Qt.RichText)
                         form.addRow(self.boost_lbl)
                         self.param_rows[name] = self.param_rows[name] + (self.boost_lbl,)
+                    if name == 'detail_res':      # qué celda sale dentro y fuera de las zonas, y con qué Poisson
+                        self.zone_lbl = QLabel('')
+                        self.zone_lbl.setObjectName('muted')
+                        self.zone_lbl.setWordWrap(True)
+                        self.zone_lbl.setTextFormat(Qt.RichText)
+                        form.addRow(self.zone_lbl)
+                        self.param_rows[name] = self.param_rows[name] + (self.zone_lbl,)
                     if name == 'behind':          # medidas de la nube para poder elegir el valor
                         self.behind_lbl = QLabel('')
                         self.behind_lbl.setObjectName('plan')
@@ -3697,6 +3751,7 @@ class MainWindow(QMainWindow):
             return
         self.plan_lbl.setText(plan_html(st, self.params()))
         self._boost_note(st)
+        self.zone_lbl.setText(zone_note(st, self.params()))
         import asistente
         txt = asistente.behind_html(st, self.params())
         self.behind_lbl.setText(txt)

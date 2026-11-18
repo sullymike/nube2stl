@@ -1162,13 +1162,29 @@ y multiplica la memoria por 3 o 4. Referencias medidas: <code>lateral3</code> (1
 la profundidad (9 o 10) o aumenta la resolución. Con <a href="#zona-detalle">zonas de detalle</a> se calcula para la
 celda de las zonas, con un máximo de 12.</p>
 
-<h3 id="p-detail_res">Resolución de las zonas</h3>
-<p class="def">Solo modos 3d, bloque y objeto (también terreno) · 0 = la del escaneo</p>
-<p>Celda dentro de las <a href="#zona-detalle">zonas de detalle</a>, en las mismas unidades que <i>Resolución</i>. Si no
-es más fina que la resolución general, las zonas no cambian nada (el plan lo avisa). Al imprimir, más fina que media
-boquilla no se ve en la pieza; tiene sentido sobre todo en las copias sin impresora o en piezas grandes.</p>
-
 <p class="ej"><b>Valores de ejemplo:</b> Automática · 9–10 para pruebas rápidas · 11 o más solo con 16 GB de memoria.</p>
+
+<h3 id="p-detail_res">Resolución de las zonas</h3>
+<p class="def">Solo objeto, terreno, bloque y 3d · 0 = la del escaneo</p>
+<p>Celda <b>dentro</b> de las <a href="#zona-detalle">zonas de detalle</a>, lo que se haya pintado con
+<b>🖌 Zona de detalle</b> en la vista de la nube; fuera se usa la <a href="#p-res">Resolución</a> general. Es un
+solo valor para todas las zonas y va en las mismas unidades que <i>Resolución</i>. Con 0 se usa la del escaneo, el
+detalle máximo que tiene la nube.</p>
+<p>Debajo del campo se ve lo que va a salir: la celda dentro y fuera de las zonas (en la nube y en la pieza) y la
+profundidad de Poisson. Si no hay zonas pintadas lo dice, y si este valor no es más fino que la resolución general,
+avisa de que las zonas no cambian nada.</p>
+<p><b>Relación con la <a href="#p-poisson_depth">Profundidad Poisson</a>:</b> Poisson divide la pieza en un octree y
+lo más fino que llega es <code>tamaño de la pieza × 1,1 ÷ 2<sup>profundidad</sup></code>. Con la profundidad en
+automática, el programa la elige a partir de esta celda (no de la general), así que con zonas sube uno o dos
+niveles; pero Poisson solo se afina donde hay puntos densos, es decir, en las zonas, y el resto de la pieza
+cuesta lo mismo. El máximo con zonas es 12: en una pieza muy grande no se llega a celdas más finas, y la nota lo
+avisa. Si pones la profundidad a mano y es demasiado baja para esta celda, la zona no llega a su resolución; la
+nota también lo dice y propone la automática.</p>
+<p>Al imprimir, más fino que media boquilla no se ve en la pieza; tiene sentido sobre todo en las copias sin
+impresora o en piezas grandes reducidas.</p>
+<p class="ej"><b>Valores de ejemplo:</b> la del escaneo (0) · 0,5–1 mm para una inscripción en una fachada
+escaneada a 0,2 mm con la resolución general en 3 mm.</p>
+
 <h3 id="p-front_pct">Percentil del frente</h3>
 <p class="def">% · por defecto 90</p>
 <p>Cada celda contiene varios puntos a distintas profundidades. Este valor indica cuál se toma: 100 es el más
