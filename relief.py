@@ -872,11 +872,12 @@ def zone_poisson(stats, prm, rf):
 
 
 # ------------------------------------------------------------------ zonas de detalle
-ZONE_MODES = ('3d', 'objeto', 'bloque')     # los que usan Poisson (el octree se afina solo donde hay puntos densos)
+ZONE_MODES = ('3d', 'objeto', 'bloque', 'alturas')   # Poisson se afina solo donde hay puntos densos; el mapa de
+                                                     # alturas, con una rejilla fina y el detalle solo en las zonas
 
 
 def has_detail(prm):
-    """¿Hay zonas de detalle que se aplican? Solo en los tipos con Poisson (no en mapa de alturas ni esquina)."""
+    """¿Hay zonas de detalle que se aplican? En todos los tipos menos el modo esquina."""
     return (zone_count(getattr(prm, 'detail', None))[0] > 0 and prm.mode in ZONE_MODES
             and not getattr(prm, 'corner', False))
 
@@ -927,11 +928,21 @@ def zone_count(zones):
 
 
 def zone_res(prm, res, res_scan):
-    """Resolución de las zonas de detalle (unidades de la nube), o None si no son más finas que la general."""
+    """Resolución de las zonas de detalle (unidades de la nube), o None si no son más finas que la general. En el
+    mapa de alturas, la general dividida por un entero (la rejilla fina parte cada celda en k × k)."""
     if not has_detail(prm):
         return None
     r = prm.detail_res if prm.detail_res > 0 else res_scan
-    return r if r < 0.99 * res else None
+    if r >= 0.99 * res:
+        return None
+    if prm.mode == 'alturas':
+        return res / zone_k(res, r)
+    return r
+
+
+def zone_k(res, rf):
+    """En cuántas partes se divide cada celda del mapa de alturas para llegar a la celda rf (o más fina)."""
+    return max(2, int(np.ceil(res / rf - 1e-6)))
 
 
 def zoned_voxels(o3d, pc, fine, res, rf):
@@ -972,6 +983,9 @@ def memory_estimate(stats, prm, npoints, avail=None):
         gb = MEM_BASE_GB + MEM_PER_POINT_3D * npoints + per_cell * cells
         detail = f'{npoints / 1e6:.1f} M puntos, {cells / 1e6:.2f} M celdas, Poisson a profundidad {depth}'
     else:
+        rf = zone_res(prm, pl['res'], pl['res_scan'])
+        if rf:                                  # zonas de detalle: la rejilla entera, a la celda fina
+            cells *= (pl['res'] / rf) ** 2
         tris = TRIS_PER_CELL * cells
         gb = MEM_BASE_GB + MEM_PER_POINT * npoints + MEM_PER_TRI * tris
         detail = f'{npoints / 1e6:.1f} M puntos, ≈ {tris / 1e6:.1f} M triángulos antes de simplificar'
@@ -1313,9 +1327,11 @@ def heightmap(p, prm: Params, rgb=None, log=lambda s: None, fine=None):
         ang += a
     U, V = _rotate(U, V, ang)
 
-    grid, mask, cgrid, valid, u0, v0 = grid_from(U, V, H, col, res, prm, log)
+    info = {}
+    grid, mask, cgrid, valid, u0, v0 = grid_from(U, V, H, col, res, prm, log, info=info)
 
     hm = HM()
+    hm.grid_info = info
     hm.U, hm.V, hm.H, hm.col, hm.ang, hm.res, hm.res_scan = U, V, H, col, ang, res, plan['res_scan']
     hm.fine = fine[keep] if fine is not None else None
     hm.grid, hm.mask, hm.cgrid, hm.valid = grid, mask, cgrid, valid
@@ -1327,16 +1343,107 @@ def heightmap(p, prm: Params, rgb=None, log=lambda s: None, fine=None):
     Rz = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
     L = Rz @ A.T
     hm.to_grid = affine(L, -L @ m - [hm.u0, hm.v0, 0])
+    if prm.mode == 'alturas' and hm.fine is not None and hm.fine.any():
+        rf = zone_res(prm, res, plan['res_scan'])
+        if rf:
+            _zone_refine(hm, prm, rf, log)
     return hm
 
 
-def grid_from(U, V, H, col, res, prm, log=lambda s: None):
+def _zone_refine(hm, prm, rf, log=lambda s: None):
+    """Zonas de detalle en el mapa de alturas: la rejilla pasa a la celda fina rf (la general ÷ k) en toda la
+    pieza. Fuera de las zonas es la general interpolada (lisa: al simplificar quedan triángulos grandes); dentro, una
+    rejilla fina hecha solo con la caja de las zonas, con los mismos ajustes y la misma forma de la roca que la
+    general (si no, saldría un escalón en el borde). Una franja de dos celdas generales hace la transición. Cambia hm en el sitio (grid, mask, valid, cgrid, res); hm.res_out es la general."""
+    res = hm.res
+    k = zone_k(res, rf)
+    cf = res / k
+    nv, nu = hm.grid.shape
+    NV, NU = nv * k, nu * k
+    if NV * NU > 60_000_000:
+        log(f'AVISO: zonas de detalle sin efecto: la rejilla fina sería de {NU} × {NV} celdas y no cabe. Sube '
+            f'«Resolución de las zonas» o la «Resolución» general')
+        return
+    U, V, H, fine = hm.U, hm.V, hm.H, hm.fine
+    # caja de las zonas, con un margen de 3 celdas generales, en la rejilla de la pieza
+    m = 3 * res
+    u_lo, u_hi = max(U[fine].min() - m, hm.u0), min(U[fine].max() + m, hm.u0 + nu * res)
+    v_lo, v_hi = max(V[fine].min() - m, hm.v0), min(V[fine].max() + m, hm.v0 + nv * res)
+    if u_hi <= u_lo or v_hi <= v_lo:
+        log('AVISO: las zonas de detalle caen fuera de la pieza')
+        return
+    i0, i1 = int((u_lo - hm.u0) / cf), int(np.ceil((u_hi - hm.u0) / cf))
+    j0, j1 = int((v_lo - hm.v0) / cf), int(np.ceil((v_hi - hm.v0) / cf))
+    i1, j1 = min(i1, NU), min(j1, NV)
+    sub = (U >= hm.u0 + i0 * cf) & (U < hm.u0 + i1 * cf) & (V >= hm.v0 + j0 * cf) & (V < hm.v0 + j1 * cf)
+    if sub.sum() < 100:
+        return
+    # rejilla fina de la caja, con los mismos ajustes (relleno, picos, suavizados) y la forma de la roca de la
+    # general
+    col = hm.col[sub] if hm.col is not None else None
+    try:
+        gf, mf, cgf, vf, u0f, v0f = grid_from(U[sub], V[sub], H[sub], col, cf, prm, like=hm.grid_info,
+                                              origin=(hm.u0 + i0 * cf, hm.v0 + j0 * cf))
+    except ValueError as e:
+        log(f'AVISO: zonas de detalle sin efecto ({e})')
+        return
+    have = mf.astype(np.float64)                    # la pieza fina (las celdas sin puntos ya van rellenas)
+    # en la rejilla final (solo la caja): centros de las celdas finas en la rejilla fina de la caja
+    jj, ii = np.mgrid[j0:j1, i0:i1]
+    x = (hm.u0 + (ii + 0.5) * cf - u0f) / cf - 0.5
+    y = (hm.v0 + (jj + 0.5) * cf - v0f) / cf - 0.5
+    x, y = np.round(x), np.round(y)                 # alineadas: cada celda final es una de la fina
+    hf = ndimage.map_coordinates(gf, [y, x], order=0, mode='nearest')
+    a = ndimage.map_coordinates(have, [y, x], order=0, mode='constant', cval=0.0) > 0.5
+    # qué celdas son de las zonas: la mayoría de sus puntos están en ellas
+    ci = ((U[sub] - hm.u0) / cf).astype(np.int64) - i0
+    cj = ((V[sub] - hm.v0) / cf).astype(np.int64) - j0
+    ok = (ci >= 0) & (ci < i1 - i0) & (cj >= 0) & (cj < j1 - j0)
+    shape = (j1 - j0, i1 - i0)
+    flat = cj[ok] * shape[1] + ci[ok]
+    n_all = np.bincount(flat, minlength=shape[0] * shape[1])
+    n_in = np.bincount(flat, weights=fine[sub][ok].astype(np.float64), minlength=shape[0] * shape[1])
+    z = (n_in > 0.5 * np.maximum(n_all, 1)).reshape(shape)
+    z = ndimage.binary_closing(z, iterations=k)
+    # peso: 1 en las zonas, baja a 0 en dos celdas generales; y 0 donde la rejilla fina no tiene datos
+    w = np.clip(1 - ndimage.distance_transform_edt(~z) / (2 * k), 0, 1)
+    w *= np.clip(ndimage.distance_transform_edt(a) / k, 0, 1)
+    # la general interpolada (cada celda, área k × k) y la máscara repetida
+    G = ndimage.zoom(hm.grid, k, order=1, mode='nearest', grid_mode=True)
+    box = G[j0:j1, i0:i1]
+    G[j0:j1, i0:i1] = box + w * (hf - box)
+    hm.zone_box, hm.zone_w, hm.zone_hf = (j0, j1, i0, i1), w, hf      # (para las pruebas)
+    hm.grid = G
+    hm.mask = np.repeat(np.repeat(hm.mask, k, 0), k, 1)
+    hm.valid = np.repeat(np.repeat(hm.valid, k, 0), k, 1)
+    if hm.cgrid is not None:
+        cg = np.repeat(np.repeat(hm.cgrid, k, 0), k, 1)
+        if cgf is not None:
+            cfine = np.stack([ndimage.map_coordinates(cgf[..., c], [y, x], order=1, mode='nearest')
+                              for c in range(3)], -1)
+            box = cg[j0:j1, i0:i1]
+            cg[j0:j1, i0:i1] = box + w[..., None] * (cfine - box)
+        hm.cgrid = cg
+    hm.res_out, hm.res, hm.detail_res = res, cf, cf
+    hm.floor = float(G[hm.mask].min())
+    log(f'Zonas de detalle en el mapa de alturas: celda de {cf:.3g} (la general {res:g} ÷ {k}) en una rejilla de '
+        f'{NU} × {NV}; detalle fino en {z.sum() * cf * cf / max(hm.mask.sum() * cf * cf, 1e-9) * 100:.1f} % de la '
+        f'pieza')
+
+
+def grid_from(U, V, H, col, res, prm, log=lambda s: None, info=None, like=None, origin=None):
     """Rejilla de alturas de una cara (coordenadas U, V en su plano y altura H): una altura por celda (el percentil
     «front_pct» de las de la celda), máscara de la pieza, relleno, picos, forma de la roca y suavizados.
-    -> (grid, mask, cgrid, valid, u0, v0), con (u0, v0) la esquina de la celda (0, 0)"""
+    -> (grid, mask, cgrid, valid, u0, v0), con (u0, v0) la esquina de la celda (0, 0).
+    info: dict que se rellena con la forma de la roca quitada ('low', en la rejilla) y la posición de la rejilla.
+    like: el info de otra rejilla de la misma cara (con su 'u0', 'v0', 'res'): se usa su forma de la roca en vez de
+    calcularla (zonas de detalle: la rejilla fina de un trozo, igual que la general). El suelo (floor_pct) no se
+    copia: la general, con los detalles más aplastados, lo tiene más alto y se comería los valles finos.
+    origin: (u, v) de una esquina de celda, para que la rejilla quede alineada con otra (por defecto, el mínimo)."""
     # --- rejilla
-    iu = ((U - U.min()) / res).astype(np.int64)
-    iv = ((V - V.min()) / res).astype(np.int64)
+    umin, vmin = (U.min(), V.min()) if origin is None else origin
+    iu = ((U - umin) / res).astype(np.int64)
+    iv = ((V - vmin) / res).astype(np.int64)
     nu, nv = int(iu.max()) + 1, int(iv.max()) + 1
     if nu * nv > 60_000_000:
         raise ValueError(f'Rejilla demasiado grande ({nu}x{nv}); aumenta la resolución (mm/celda)')
@@ -1402,10 +1509,20 @@ def grid_from(U, V, H, col, res, prm, log=lambda s: None):
     if cgrid is not None:
         idx = ndimage.distance_transform_edt(~valid, return_distances=False, return_indices=True)
         cgrid = cgrid[idx[0], idx[1]]
+    u0, v0 = umin + c0 * res, vmin + r0 * res
     if uses_detrend(prm):
         import superficie
         before = np.percentile(grid[mask], 98) - np.percentile(grid[mask], 2)
-        grid = grid - superficie.low_surface(grid, mask, superficie.detrend_sigma(prm.detrend, res))
+        if like is not None and like.get('low') is not None:      # la de la otra rejilla, en estas celdas
+            jj, ii = np.mgrid[0:grid.shape[0], 0:grid.shape[1]]
+            x = (u0 + (ii + 0.5) * res - like['u0']) / like['res'] - 0.5
+            y = (v0 + (jj + 0.5) * res - like['v0']) / like['res'] - 0.5
+            low = ndimage.map_coordinates(like['low'], [y, x], order=1, mode='nearest')
+        else:
+            low = superficie.low_surface(grid, mask, superficie.detrend_sigma(prm.detrend, res))
+        grid = grid - low
+        if info is not None:
+            info['low'] = low
         after = np.percentile(grid[mask], 98) - np.percentile(grid[mask], 2)
         log(f'Forma general de la roca quitada (formas de más de {prm.detrend:g} mm): el relieve pasa de '
             f'{before:.1f} a {after:.1f} mm')
@@ -1418,7 +1535,9 @@ def grid_from(U, V, H, col, res, prm, log=lambda s: None):
         grid = ndimage.gaussian_filter(grid, prm.gauss / res)
     if prm.floor_pct > 0:
         grid = np.maximum(grid, np.percentile(grid[mask], prm.floor_pct))
-    return grid, mask, cgrid, valid, U.min() + c0 * res, V.min() + r0 * res
+    if info is not None:
+        info.update(u0=u0, v0=v0, res=res)
+    return grid, mask, cgrid, valid, u0, v0
 
 
 
@@ -1439,13 +1558,12 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
     if getattr(prm, 'detail', None):
         if has_detail(prm):
             fine = zone_mask(p, prm.detail)
-            log(f'Zonas de detalle: {len(prm.detail)} ({fine.sum():,} puntos, {100 * fine.mean():.1f} % de la nube)')
+            log(f'Zonas de detalle: {zone_count(prm.detail)[0]} ({fine.sum():,} puntos, {100 * fine.mean():.1f} % de la nube)')
             if not fine.any():
                 log('AVISO: ningún punto cae en las zonas de detalle')
                 fine = None
-        else:
-            log('AVISO: las zonas de detalle solo se aplican en los tipos con Poisson (3d, bloque, objeto, terreno); '
-                'aquí se ignoran')
+        elif zone_count(prm.detail)[0]:
+            log('AVISO: las zonas de detalle no se aplican en el modo esquina; aquí se ignoran')
     if prm.mode == 'objeto':
         import objeto3d
         r = objeto3d.reconstruct_object(p, prm, rgb, normals, log, mesh=mesh, fine=fine)
@@ -1463,7 +1581,9 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
         else:
             back = back_face(hm, prm, log) if getattr(prm, 'reverse', None) else None
             r = _reconstruct_25d(hm, prm, log, back)
-        r.res = hm.res
+            if getattr(hm, 'detail_res', None):
+                r.detail_res = hm.detail_res
+        r.res = getattr(hm, 'res_out', hm.res)      # la general (con zonas, la rejilla es más fina)
     rf = getattr(r, 'detail_res', None)         # zonas de detalle (lo pone el modo; el realce rehace el Result)
     xf = r.xform                                # nube -> pieza, antes de los acabados
     if prm.mode != 'alturas':                   # en el mapa de alturas ya se ha hecho (_boost)
@@ -1829,9 +1949,10 @@ def simplify_zoned(r, tol_out, tol_in, inside, log=lambda s: None):
             if out is None:
                 break
             err = _mesh_error(V0, T0, out[0], out[1], pts=ref)
-            ok = err[1] <= tol and err[3] <= 2 * tol
+            # el máximo también: una esquina de la pared metida 2 mm son pocos puntos y no llega al p99,9
+            ok = err[1] <= tol and err[3] <= 2 * tol and err[2] <= 2 * tol
             log(f'  {name}, {pct:g} % ({len(out[1]):,} triángulos en total): error p99 {err[1]:.3g} mm, '
-                f'p99,9 {err[3]:.3g} mm {"✔" if ok else "✘"}')
+                f'p99,9 {err[3]:.3g} mm, máximo {err[2]:.3g} mm {"✔" if ok else "✘"}')
             if not ok:
                 break
             best, best_err = out, err

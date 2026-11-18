@@ -356,7 +356,7 @@ que el resto.
     recorte en otra nube o en otra fecha. Esfuerzo: pequeño–medio.
   - **Quedarse con un grupo** con un clic (como ya se marcan los grupos sueltos). Esfuerzo: pequeño.
 
-### G2. Zona de detalle — *HECHA en 0.23.0 para los tipos con Poisson; mapa de alturas pendiente*
+### G2. Zona de detalle — *HECHA en 0.23.0 para los tipos con Poisson; mapa de alturas (primera versión) en 0.25.0*
 
 - **Qué es.** Marcar una o varias zonas (con el mismo gesto que el recorte: rectángulo o lazo) y darles su
   resolución: la del escaneo o un valor; el resto, a la resolución normal (o más gruesa). Ejemplo: la inscripción de
@@ -402,7 +402,30 @@ que el resto.
     matriz nube → pieza de antes de los acabados (`detail_zones`, `detail_xform`, también en el .npz del proceso
     aparte); `relief.zone_on_mesh` lleva los vértices a la nube y aplica la misma máscara. Comprobado en objeto, 3d
     y bloque (los vértices vuelven a la nube a < 0,5 mm de mediana).
-  - Pendiente: zonas en el mapa de alturas.
+  - Mapa de alturas — *primera versión HECHA en 0.25.0* (`relief._zone_refine`, desde `heightmap` en modo alturas):
+    - La celda fina es la general ÷ k (`zone_k`), para que cada celda general sea k × k finas y las rejillas
+      queden alineadas. La rejilla final es fina en toda la pieza (límite 60 M celdas, como siempre); fuera, la
+      general interpolada (`ndimage.zoom`, bilineal por áreas).
+    - Dentro: `grid_from` solo con los puntos de la caja de las zonas (+3 celdas generales), alineada con la final
+      (`origin`) y con la forma de la roca de la general (`like`; calculada con un trozo salía otra y había
+      escalón). El suelo (`floor_pct`) no se copia: el de la general, con los bultos aplastados, es más alto y se
+      comía los valles (error 0,12 → 0,095).
+    - Peso: 1 en las celdas con mayoría de puntos de la zona, baja a 0 en 2 celdas generales; también a 0 donde
+      la rejilla fina no tiene pieza (su máscara, no las celdas sin puntos: con ellas el peso bajaba alrededor de
+      cada hueco y el error subía a 0,125).
+    - Primer intento descartado: sumar a la general solo el detalle fino (fina − fina suavizada). La general toma
+      el percentil 90 de celdas grandes y queda más alta en los relieves con bultos: el error solo bajaba de 0,54 a
+      0,46.
+    - Medido (losa con bultitos de 0,8 mm cada 5 mm, celda de 2 mm, zona a 0,5 mm, front_pct 50): error en la
+      rejilla, todo a 2 mm 0,30; todo a 0,5 mm 0,091; con la zona, dentro 0,097 y fuera 0,295. Pieza: 2.652 →
+      15.834 triángulos, triángulos de la cara de 0,62 mm² dentro y 3,2 mm² fuera (mediana), cerrada.
+    - La base va bajo el punto más bajo, que con la zona está en un valle más hondo: la losa sale ~0,6 mm más
+      gruesa (+20 % de volumen en la prueba). Es el relieve de verdad.
+    - De paso: `simplify_zoned` exige también error máximo ≤ 2 × tolerancia; con la pared en celdas finas, la
+      simplificación metía las esquinas 1,5 mm (p99,9 no lo veía).
+    - Pruebas: `ZonasDetalle.test_mapa_de_alturas`, `ZonasDetalleAlturas.test_relieve_con_zona`.
+    - Pendiente: rejilla fina solo en la caja de las zonas, cosida con la general (menos memoria en piezas
+      grandes); el reverso (Archivo › Añadir el reverso) se calcula entero a la celda fina.
 
 ### G3. Pincel para las zonas de detalle — *HECHO el 18-11-2026 (después de 0.23.0)*
 - **Por qué.** Al usuario le parecía que «pintar la zona» no estaba hecho: la zona solo se marcaba con la tercera

@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.24.0'
+__version__ = '0.25.0'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,13 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.25.0', 'noviembre 2026', [
+        'Zonas de detalle también en el mapa de alturas (relieve, curvo, grabado): la rejilla se parte en celdas más '
+        'finas y la parte pintada se hace con los puntos de la zona, con la misma forma de la roca que el resto y '
+        'una transición suave; fuera queda lisa y al simplificar se queda con triángulos grandes. En una prueba, el '
+        'error en la zona bajó de 0,30 a 0,10 mm (0,09 con toda la pieza fina)',
+        'La simplificación por zonas mira también el error máximo: ya no mete las esquinas de la pared',
+    ]),
     ('0.24.0', 'noviembre 2026', [
         'Zonas de detalle con pincel: botón propio «🖌 Zona de detalle» en la vista de la nube (antes estaba escondido '
         'en el desplegable del recorte). Se pinta arrastrando sobre la pieza, con cuatro tamaños de pincel, y solo '

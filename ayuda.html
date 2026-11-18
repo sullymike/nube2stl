@@ -244,13 +244,26 @@ y <i>Perfil</i>. En la nube: <i>Arriba</i>, <i>Frente</i> y <i>Lado</i>.</p>
       haya hecho, y <i>Quitar todo</i> los quita todos. Se guardan con los ajustes y en el registro.<br>
       Dentro de la zona la pieza se hace con la celda de <a href="#p-detail_res">Resolución de las zonas</a> (por
       defecto la del escaneo) y fuera con la normal, así que la pieza no cuesta mucho más memoria ni tiempo que sin
-      la zona. Cómo se hace: dentro la nube se submuestrea a la celda fina y fuera a la normal; Poisson sube la
-      profundidad del octree, que solo se afina donde hay puntos densos, es decir, en la zona; y al simplificar se
-      pasa dos veces, fuera con el error admisible normal y dentro con uno proporcional a la celda fina. Solo en los
-      tipos con Poisson (objeto, terreno, bloque, 3d), no en el mapa de alturas. El plan de la pieza (pestaña Tamaño)
-      dice cuántas zonas hay, su celda y qué parte de la nube ocupan, y la memoria prevista las cuenta. En una
-      prueba con una esfera con bultitos de 0,8 mm (celda general de 4 mm, zona a 1 mm), el error dentro de la zona
-      bajó de 0,38 a 0,08 mm y fuera quedó igual. Después de generar, en la malla, <i>Color › zonas de detalle</i>
+      la zona. Cómo se hace:
+      <ul>
+        <li><b>Con Poisson</b> (objeto, fragmento, interior, terreno, bloque, 3d): dentro la nube se submuestrea a
+            la celda fina y fuera a la normal, y Poisson sube la profundidad del octree, que solo se afina donde hay
+            puntos densos, es decir, en la zona.</li>
+        <li><b>Con el mapa de alturas</b> (relieve, curvo, grabado): cada celda de la rejilla se parte en k × k
+            (por eso la celda de dentro es la general dividida por un entero: 2 mm ÷ 4 = 0,5 mm). Fuera de las zonas
+            la rejilla es la general interpolada, lisa; dentro, una rejilla fina hecha con los puntos de la zona,
+            con los mismos ajustes y la misma forma de la roca que la general, y una franja de dos celdas hace la
+            transición. La rejilla fina es de toda la pieza, así que gasta más memoria que con Poisson (la nota de
+            Avanzado dice cuántas celdas salen); al simplificar, lo de fuera se queda con triángulos grandes.</li>
+        <li>En los dos casos se simplifica dos veces, fuera con el error admisible normal y dentro con uno
+            proporcional a la celda fina.</li>
+      </ul>
+      No cuentan en el modo esquina. El plan de la pieza (pestaña Tamaño) dice cuántas zonas hay, su celda y qué
+      parte de la nube ocupan, y la memoria prevista las cuenta. Con la zona, la base se pone bajo el punto más bajo,
+      que suele estar en la zona (valles más hondos), así que en un relieve la losa puede salir algo más gruesa.
+      Medido: en una esfera con bultitos de 0,8 mm (celda general de 4 mm, zona a 1 mm), el error dentro de la zona
+      bajó de 0,38 a 0,08 mm y fuera quedó igual; en una losa con los mismos bultos (mapa de alturas, celda de 2 mm,
+      zona a 0,5 mm), de 0,30 a 0,10 mm, casi como con toda la pieza a 0,5 mm (0,09). Después de generar, en la malla, <i>Color › zonas de detalle</i>
       enseña dónde han quedado.</li>
   <li><b>Malla, Luz:</b> <i>rasante móvil</i> es una luz baja desde la izquierda de la pantalla que gira contigo, así que
       siempre marca el relieve de lo que miras. <i>Frontal</i> ilumina de frente y no deja zonas en sombra.
@@ -1165,7 +1178,7 @@ celda de las zonas, con un máximo de 12.</p>
 <p class="ej"><b>Valores de ejemplo:</b> Automática · 9–10 para pruebas rápidas · 11 o más solo con 16 GB de memoria.</p>
 
 <h3 id="p-detail_res">Resolución de las zonas</h3>
-<p class="def">Solo objeto, terreno, bloque y 3d · 0 = la del escaneo</p>
+<p class="def">Todos los tipos menos el modo esquina · 0 = la del escaneo</p>
 <p>Celda <b>dentro</b> de las <a href="#zona-detalle">zonas de detalle</a>, lo que se haya pintado con
 <b>🖌 Zona de detalle</b> en la vista de la nube; fuera se usa la <a href="#p-res">Resolución</a> general. Es un
 solo valor para todas las zonas y va en las mismas unidades que <i>Resolución</i>. Con 0 se usa la del escaneo, el
@@ -1173,7 +1186,10 @@ detalle máximo que tiene la nube.</p>
 <p>Debajo del campo se ve lo que va a salir: la celda dentro y fuera de las zonas (en la nube y en la pieza) y la
 profundidad de Poisson. Si no hay zonas pintadas lo dice, y si este valor no es más fino que la resolución general,
 avisa de que las zonas no cambian nada.</p>
-<p><b>Relación con la <a href="#p-poisson_depth">Profundidad Poisson</a>:</b> Poisson divide la pieza en un octree y
+<p><b>En el mapa de alturas</b> (relieve, curvo, grabado) cada celda general se parte en k × k: la celda de las
+zonas es la general dividida por un entero, la primera que no pasa de este valor (con 2 mm y 0,7 pedidos, 2 ÷ 3 =
+0,67 mm). La rejilla fina es de toda la pieza; la nota dice cuántas celdas salen y avisa si pasan de 60 millones.</p>
+<p><b>Relación con la <a href="#p-poisson_depth">Profundidad Poisson</a></b> (los demás tipos): Poisson divide la pieza en un octree y
 lo más fino que llega es <code>tamaño de la pieza × 1,1 ÷ 2<sup>profundidad</sup></code>. Con la profundidad en
 automática, el programa la elige a partir de esta celda (no de la general), así que con zonas sube uno o dos
 niveles; pero Poisson solo se afina donde hay puntos densos, es decir, en las zonas, y el resto de la pieza
@@ -1459,8 +1475,9 @@ las pérdidas, de mayor a menor importancia:</p>
       según el <a href="#p-use">uso</a>), unidades dudosas preguntadas al abrir y
       <a href="#p-behind">Profundidad máx.</a> automática.</li>
   <li><b><a href="#recorte">Recorte con lazo</a></b> y <b><a href="#zona-detalle">zonas de detalle</a></b>: una parte de
-      la pieza con más resolución que el resto (tipos con Poisson), marcada con pincel, lazo o rectángulo. Falta
-      hacerlo en el mapa de alturas.</li>
+      la pieza con más resolución que el resto, marcada con pincel, lazo o rectángulo. En el mapa de alturas la
+      rejilla fina es de toda la pieza: faltaría hacerla solo en la caja de la zona, cosida con la general, para
+      gastar menos memoria en piezas grandes.</li>
 </ul>
 
 <h3>Unir las caras de los laterales de ejemplo</h3>

@@ -344,9 +344,9 @@ SPEC = [
         ('detail_res', 'Resolución de las zonas', 'f', dict(lo=0, hi=100, step=0.1, dec=2, suf='mm',
                                                              special='la del escaneo'),
          'Celda dentro de las zonas de detalle, lo pintado con 🖌 Zona de detalle en la vista de la nube\n'
-         '(fuera se usa «Resolución»). Un solo valor para todas las zonas. Solo tipos con Poisson.\n'
+         '(fuera se usa «Resolución»). Un solo valor para todas las zonas.\n'
          'La del escaneo: el detalle máximo que tiene la nube. Debajo se ve la celda dentro y fuera\n'
-         'y la profundidad de Poisson que hace falta para llegar a ella.'),
+         'y, con Poisson, la profundidad que hace falta para llegar a ella.'),
         ('simplify', 'Simplificar', 'f', dict(lo=0, hi=100, step=5, dec=1, suf='%', special='automático'),
          'Automático: todo lo que la impresora no notaría (según Calidad). O un % fijo de triángulos (100 = no).'),
         ('poisson_depth', 'Profundidad Poisson', 'i', dict(lo=0, hi=13, special='automática'),
@@ -487,7 +487,7 @@ def zone_note(st, prm):
         return ('Solo cuenta donde se haya pintado con <b>🖌 Zona de detalle</b> en la vista de la nube. Ahora no '
                 'hay ninguna zona.')
     if not relief.has_detail(prm):
-        return 'Las zonas de detalle solo cuentan en objeto, terreno, bloque y 3d.'
+        return 'Las zonas de detalle no cuentan en el modo esquina.'
     try:
         pl = relief.print_plan(st, prm)
     except Exception:                                  # noqa: BLE001  solo es una nota
@@ -501,8 +501,20 @@ def zone_note(st, prm):
         fix = ('sirven cuando la «Resolución» general es más gruesa' if prm.detail_res <= 0 else
                'baja este valor o sube la «Resolución» general')
         return out + '<br>' + warn(f'Dentro, la misma: {why}. Las zonas no cambian nada; {fix}.')
-    out = (f'<b>Dentro de las zonas ({n}): celda de {f(rf)} mm</b> ({f(rf * s)} mm en la pieza)'
-           f'{", la del escaneo" if prm.detail_res <= 0 else ""}.<br>' + out)
+    asked = f'la del escaneo, {f(pl["res_scan"])} mm' if prm.detail_res <= 0 else f'{f(prm.detail_res)} mm'
+    if prm.mode == 'alturas':
+        k = relief.zone_k(pl['res'], rf)
+        how = f', la general ÷ {k} (pedida: {asked})'
+    else:
+        how = ', la del escaneo' if prm.detail_res <= 0 else ''
+    out = (f'<b>Dentro de las zonas ({n}): celda de {f(rf)} mm</b> ({f(rf * s)} mm en la pieza){how}.<br>' + out)
+    if prm.mode == 'alturas':
+        cells = pl['cells'] * k * k
+        out += (f'<br>Mapa de alturas: cada celda se parte en {k} × {k}, en toda la pieza ({f(cells / 1e6)} M '
+                f'celdas); fuera de las zonas queda lisa y al simplificar se queda con triángulos grandes.')
+        if cells > 60e6:
+            out += '<br>' + warn('No cabe (más de 60 M celdas): sube este valor o la «Resolución» general.')
+        return out
     d, auto, cell, d_auto = relief.zone_poisson(st, prm, rf)
     ok = cell <= 1.25 * rf * 1.01
     if auto and ok:
@@ -526,8 +538,8 @@ def detail_html(st, prm):
     if not n:
         return ''
     if not relief.has_detail(prm):
-        return (f'<br><span style="color:{C["muted"]}">{n} zona{"s" if n > 1 else ""} de detalle: solo cuentan en '
-                f'los tipos con Poisson (objeto, terreno, bloque, 3d)</span>')
+        return (f'<br><span style="color:{C["muted"]}">{n} zona{"s" if n > 1 else ""} de detalle: no cuentan en '
+                f'el modo esquina</span>')
     pl = relief.print_plan(st, prm)
     rf = relief.zone_res(prm, pl['res'], pl['res_scan'])
     if rf is None:
@@ -610,7 +622,7 @@ ONLY_RELIEF = ('front_pct', 'min_pts', 'fill', 'despike', 'smooth', 'gauss', 'fl
                'z_scale', 'negative', 'base', 'frame', 'behind', 'flip', 'auto_straighten', 'view', 'plane',
                'edges')
 ONLY_OBJECT = ('up', 'cut', 'ground', 'interior', 'ceiling')
-ONLY_POISSON = ('poisson_depth', 'detail_res')
+ONLY_POISSON = ('poisson_depth',)
 ONLY_POINTS = ('denoise',)             # modos que trabajan con los puntos en 3D (no con el mapa de alturas)
 ONLY_HEIGHTMAP = ('detrend',)
 REAL_OFF = ('target_len', 'nozzle', 'layer', 'bed_x', 'bed_y', 'quality', 'boost', 'boost_lo', 'boost_hi',
@@ -3674,8 +3686,8 @@ class MainWindow(QMainWindow):
                         + (f'se deja lo de dentro {shape}' if c['inside'] else f'se quita lo de dentro {shape}'))
 
     def _add_detail(self, z, msg):
-        if self.params().mode not in relief.ZONE_MODES:
-            msg += ' (solo cuenta en los tipos con Poisson: objeto, terreno, bloque, 3d)'
+        if getattr(self.params(), 'corner', False):
+            msg += ' (no cuenta en el modo esquina)'
         if z.get('erase') and not relief.zone_count(self.details)[0]:
             self.say('No hay zonas de detalle que borrar: elige «pintar» para marcarlas')
             return
