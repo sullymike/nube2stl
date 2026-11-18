@@ -1578,6 +1578,29 @@ class TamanoReal(unittest.TestCase):
                            log=logs.append, mesh=True)
         self.assertTrue(any('puntos salen de una malla' in s for s in logs))
 
+    def test_superficie_abierta(self):
+        """Copia sin impresora como superficie abierta: de la lápida (mapa de alturas) y del bloque (Poisson) se queda
+        solo lo escaneado: sin base ni paredes (la mitad de los triángulos fuera), ningún vértice a más de 2 celdas
+        del escaneo, sin aristas de más de dos caras y sin volumen. Cerrada, como siempre."""
+        from scipy.spatial import cKDTree
+        for P, mode in ((ejemplos.lapida(120_000)[0], 'alturas'), (ejemplos.bloque()[0], 'bloque')):
+            cl = relief.reconstruct(P, relief.Params(units='mm', target='real', mode=mode, simplify=100))
+            op = relief.reconstruct(P, relief.Params(units='mm', target='real', mode=mode, simplify=100,
+                                                     open_mesh=True))
+            self.assertEqual((cl.bad_edges, cl.open_edges), (0, 0))
+            self.assertEqual(op.bad_edges, 0)
+            self.assertGreater(op.open_edges, 100)
+            self.assertEqual(op.volume, 0.0)
+            self.assertTrue(relief.mesh_state(op)[0])
+            self.assertLess(len(op.tris), 0.9 * len(cl.tris))
+            T = np.asarray(op.xform)
+            d = cKDTree(P.astype(np.float64) @ T[:3, :3].T + T[:3, 3]).query(op.verts)[0]
+            self.assertLess(float(d.max()), 2.01 * op.cell + 1e-6)
+            self.assertGreater(float(np.percentile(cKDTree(P.astype(np.float64) @ T[:3, :3].T + T[:3, 3])
+                                                   .query(cl.verts)[0], 95)), 3 * cl.cell)   # la cerrada tiene base
+        prm = relief.Params(units='mm', mode='alturas', open_mesh=True)     # imprimiendo no cuenta
+        self.assertEqual(relief.reconstruct(ejemplos.lapida(60_000)[0], prm).open_edges, 0)
+
     def test_copia_sin_impresora_a_escala(self):
         """Copia sin impresora a 1:10: la pieza mide la décima parte, la tolerancia va en mm de la pieza (la décima
         parte de la de 1:1) y la base proporcional se calcula con el tamaño de la pieza, no del original."""

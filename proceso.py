@@ -32,7 +32,8 @@ def save_result(path, r):
     np.savez(path, verts=r.verts, tris=r.tris, grid=r.grid,
              scalars=np.array([r.cell, r.scale, r.angle, r.bad_edges, r.volume, r.err_mean, r.err_max,
                               r.err_p99, r.res]),
-             mode=np.array(r.mode), hollow=np.array(r.hollow), corner=np.array(r.corner), **extra)
+             mode=np.array(r.mode), hollow=np.array(r.hollow), corner=np.array(r.corner),
+             open_edges=np.array(int(r.open_edges)), **extra)
 
 
 def load_result(path):
@@ -43,7 +44,8 @@ def load_result(path):
                          float(e99), float(res), xform=d['xform'] if 'xform' in d else None,
                          dev=d['dev'] if 'dev' in d else None, hollow=bool(d['hollow']) if 'hollow' in d else False,
                          zclip=tuple(d['zclip']) if 'zclip' in d else None,
-                         corner=bool(d['corner']) if 'corner' in d else False)
+                         corner=bool(d['corner']) if 'corner' in d else False,
+                         open_edges=int(d['open_edges']) if 'open_edges' in d else 0)
     if 'detail_zones' in d:
         import json
         r.detail_zones = json.loads(str(d['detail_zones']))

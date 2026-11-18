@@ -889,6 +889,16 @@ perder precisión (el registro dice qué origen se ha restado).</p>
   <li><b>gran formato</b>: imprimirla por piezas; propone 3MF. Hay que trocearla en el laminador.</li>
   <li><b>medir</b>: lo más fiel posible: casi sin simplificar (error admisible de 1/20 de la celda); ficheros grandes.</li>
 </ul>
+<h3 id="p-open_mesh">Superficie abierta (copia sin impresora)</h3>
+<p class="def">Solo con «Copia sin impresora» · por defecto no</p>
+<p>Guarda solo la superficie escaneada, como una lámina abierta: sin base, sin paredes, sin marco y sin los huecos que
+el programa rellena. De la malla se quitan los triángulos que no tienen puntos del escaneo debajo (a más de 2 celdas),
+y en el borde también el flequillo que se sale más de una celda. Vale para cualquier tipo de pieza: en un relieve
+queda la cara; en un objeto o un bloque hechos con Poisson, solo lo que se escaneó, sin lo que Poisson cierra por su
+cuenta. Es lo que se quiere para archivar, medir o seguir trabajando en otro programa de modelado; no se puede imprimir
+tal cual, porque no encierra volumen (el resultado dice «abierta» y el volumen sale «—»). Con ella no cuentan el
+grosor de base, la pieza hueca ni el letrero. En la lápida de ejemplo se quitan 120.000 de 238.000 triángulos (la base
+y las paredes) y todos los vértices quedan a menos de 2 celdas del escaneo.</p>
 <h3 class="grupo">Pestaña Pieza</h3>
 <h3 id="p-shape">Forma</h3>
 <ul>

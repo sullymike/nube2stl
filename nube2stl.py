@@ -241,6 +241,10 @@ SPEC = [
          'cnc: fresarla (STL, sin color).\n'
          'gran formato: imprimirla por piezas (hay que trocearla en el laminador).\n'
          'medir: lo más fiel posible (casi sin simplificar; ficheros grandes).'),
+        ('open_mesh', 'Superficie abierta', 'b', {},
+         'Solo con «Copia sin impresora»: guarda solo la superficie escaneada, abierta, sin base, paredes, marco ni\n'
+         'huecos rellenados (se quitan los triángulos que no tienen puntos del escaneo debajo). Para archivo, para\n'
+         'medir o para otro programa de modelado; no se puede imprimir tal cual (no tiene volumen).'),
     ]),
     ('Pieza final', [
         ('interior', 'Interior', 'c', dict(items=['no', 'corte', 'negativo']),
@@ -985,7 +989,7 @@ def batch_task(paths, outdir, prm, kind, job, pdf, reg, log):
             sx, sy, sz = r.size
             row.update(estado='ok', malla=out, ancho_mm=f'{sx:.1f}', fondo_mm=f'{sy:.1f}', alto_mm=f'{sz:.1f}',
                        volumen_cm3=f'{r.volume / 1000:.1f}', triangulos=len(r.tris),
-                       cerrada='sí' if r.bad_edges == 0 else 'no')
+                       cerrada=('abierta' if r.open_edges else 'sí') if r.bad_edges == 0 else 'no')
             done.append(out)
         except Exception as e:
             log(f'    ERROR: {e}')
@@ -1930,6 +1934,7 @@ class MainWindow(QMainWindow):
         self.widgets['boost'].valueChanged.connect(self._mode_enable)
         self.widgets['interior'].currentTextChanged.connect(self._mode_enable)
         self.widgets['corner'].toggled.connect(self._mode_enable)
+        self.widgets['open_mesh'].toggled.connect(self._mode_enable)
         self.widgets['surface'].currentTextChanged.connect(self._mode_enable)
         self.widgets['view'].currentTextChanged.connect(lambda *_: self._toggle_clean(keep_view=True))
         self.widgets['view'].currentTextChanged.connect(self._mode_enable)
@@ -2373,8 +2378,10 @@ class MainWindow(QMainWindow):
         self.widgets['ratio'].setSpecialValueText('1:1 (tamaño real)' if real else 'según lado mayor')
         if real:                                   # copia sin impresora: ni lado mayor ni impresora ni realce
             off.update(REAL_OFF)
+            if self.widgets['open_mesh'].isChecked():
+                off.update(('base', 'wall'))       # sin base ni hueco: solo la superficie
         else:
-            off.add('use')
+            off.update(('use', 'open_mesh'))
         if mode != 'bloque':
             off.add('corner')
         elif self.widgets['corner'].isChecked():
@@ -4042,7 +4049,11 @@ class MainWindow(QMainWindow):
         sizes = relief.file_sizes(len(r.verts), len(r.tris), color)
         t = self.tiles
         t['dims'].setText(f'{sx:.0f} × {sy:.0f} × {sz:.0f}')
-        if r.bad_edges == 0:
+        if r.open_edges:
+            ok, txt = relief.mesh_state(r)
+            t['state'].setText(f'<span style="color:{C["ok" if ok else "bad"]}">{"✔" if ok else "✘"} '
+                               f'{"abierta" if ok else txt}</span>')
+        elif r.bad_edges == 0:
             t['state'].setText(f'<span style="color:{C["ok"]}">✔ cerrada</span>')
         else:
             t['state'].setText(f'<span style="color:{C["bad"]}">✘ {r.bad_edges} abiertas</span>')
@@ -4059,13 +4070,14 @@ class MainWindow(QMainWindow):
         if relief.is_real(prm):                     # copia sin impresora: medida y volumen, ni capas ni PLA
             self.tile_caps['pla'].setText('Volumen')
             t['layers'].setText(f'<span style="color:{C["navy"]}">{_len_txt(r.relief_depth)}</span>')
-            t['pla'].setText(relief.fmt_vol(r.volume))
+            t['pla'].setText('—' if r.open_edges else relief.fmt_vol(r.volume))
         extra = ['<b>Método:</b> ' + ('esquina: un mapa de alturas por cara' if getattr(r, 'corner', False)
                                        else METHOD_NAME.get(r.mode, r.mode)),
                  f'<b>Escala:</b> {r.scale:.4f} · celda {r.cell:.3f} mm' + (f' · giro {r.angle:+.1f}°' if r.angle else ''),
                  f'<b>Otros formatos:</b> 3MF {relief.fmt_bytes(sizes["3MF"])} · PLY {relief.fmt_bytes(sizes["PLY"])} · OBJ {relief.fmt_bytes(sizes["OBJ"])}',
-                 f'<b>Volumen:</b> {r.volume / 1000:,.1f} cm³ · PLA ' + ('(hueca, sin relleno)' if r.hollow else 'macizo')
-                 + f' ≈ {r.grams_pla:,.0f} g',
+                 ('<b>Volumen:</b> ninguno: superficie abierta, sin base ni paredes' if r.open_edges else
+                  f'<b>Volumen:</b> {r.volume / 1000:,.1f} cm³ · PLA ' + ('(hueca, sin relleno)' if r.hollow else 'macizo')
+                  + f' ≈ {r.grams_pla:,.0f} g'),
                  f'<b>Resolución usada:</b> {r.res:.2f} (celda {r.cell:.3f} mm en la pieza)']
         if r.err_max:
             extra.append(f'<b>Simplificada:</b> error medio {r.err_mean:.3f} mm, p99 {r.err_p99:.3f} mm '

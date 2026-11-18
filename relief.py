@@ -347,6 +347,7 @@ class Params:
     quality: str = 'alta'          # tolerancia de la simplificación automática: 'normal' | 'alta' | 'maxima'
     target: str = 'imprimir'       # destino: 'imprimir' (réplica a escala para la impresora) | 'real' (copia 1:1)
     use: str = 'archivo'           # tamaño real: 'archivo' | 'cnc' | 'gran formato' | 'medir' (simplificación)
+    open_mesh: bool = False        # copia sin impresora: solo la superficie escaneada, abierta (sin base ni paredes)
     # método y malla
     mode: str = 'alturas'          # 'alturas' (2,5D) | '3d' (Poisson, socavados) | 'bloque' (cara y laterales)
                                    # | 'objeto' (completo, escaneado por todos los lados)
@@ -396,6 +397,7 @@ class Result:
     hollow: bool = False           # hueca: el volumen ya es el de la pared
     zclip: object = None           # (zmin, zmax) en la pieza: la parte de la nube que el modo representa
     corner: bool = False           # pieza de esquina (esquina.py): un mapa de alturas por cara
+    open_edges: int = 0            # superficie abierta (open_mesh): aristas de borde (bad_edges = las de más de 2 caras)
 
     @property
     def relief_depth(self):
@@ -1629,6 +1631,8 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
     xf = r.xform                                # nube -> pieza, antes de los acabados
     if prm.mode != 'alturas':                   # en el mapa de alturas ya se ha hecho (_boost)
         r = _boost_result(r, prm, log)
+    if is_real(prm) and getattr(prm, 'open_mesh', False):
+        r = open_surface(r, p, log)
     color = r.vcolors is not None
     log(f'Tamaño del fichero sin simplificar: {sizes_text(len(r.verts), len(r.tris), color)}')
     if prm.simplify <= 0 and rf and r.xform is not None:          # dos tolerancias: la de las zonas, más fina
@@ -1652,7 +1656,9 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
         r.dev = desviacion.compute(r, p, log)
     except Exception as e:                      # el mapa es informativo: nunca debe impedir tener la pieza
         log(f'(no se pudo calcular el mapa de desviación: {e})')
-    if prm.wall > 0 or prm.label.strip():
+    if (prm.wall > 0 or prm.label.strip()) and r.open_edges:
+        log('AVISO: una superficie abierta no puede ser hueca ni llevar letrero; se ignoran')
+    elif prm.wall > 0 or prm.label.strip():
         import acabado
         r0 = r
         r = acabado.apply(r, prm, log)
@@ -1675,6 +1681,76 @@ def reconstruct(p, prm: Params, rgb=None, log=lambda s: None, normals=None, mesh
         log(f'AVISO: el relieve ocupa pocas capas ({nl:.0f}); se verá escalonado. Prueba una capa más fina, '
             f'una pieza más grande o «Exageración del relieve».')
     return r
+
+
+def mesh_state(r):
+    """Estado de la malla para enseñarlo: (bien, texto). Una superficie abierta pedida (open_mesh) está bien si no
+    tiene aristas de más de dos caras."""
+    if getattr(r, 'open_edges', 0):
+        return r.bad_edges == 0, 'superficie abierta' + (f', {r.bad_edges} aristas mal' if r.bad_edges else '')
+    return r.bad_edges == 0, 'cerrada' if r.bad_edges == 0 else f'{r.bad_edges} aristas abiertas'
+
+
+def vol_text(r):
+    return '— (superficie abierta)' if getattr(r, 'open_edges', 0) else fmt_vol(r.volume)
+
+
+def open_surface(r, p, log=lambda s: None, max_pts=4_000_000):
+    """Copia sin impresora como superficie abierta: de la malla se quedan solo los triángulos con los tres vértices
+    junto al escaneo (a menos de 2 celdas o 3 separaciones de punto; en el borde, el centro a menos de 1 celda), así que se van la base, las paredes, el marco,
+    los huecos rellenados y lo que Poisson alarga más allá de los puntos. Quedan solo los trozos con al menos el 1 %
+    de los triángulos. Sin volumen: bad_edges cuenta las aristas de más de dos caras y open_edges las de borde."""
+    from dataclasses import replace
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    from scipy.spatial import cKDTree
+    if r.xform is None:
+        log('AVISO: este tipo de pieza no sabe dónde cae el escaneo; se deja cerrada')
+        return r
+    P = np.asarray(p)
+    if len(P) > max_pts:
+        P = P[np.random.default_rng(0).choice(len(P), max_pts, replace=False)]
+    T = np.asarray(r.xform, np.float64)
+    Q = P.astype(np.float64) @ T[:3, :3].T + T[:3, 3]           # el escaneo en la pieza
+    tree = cKDTree(Q)
+    sp = float(np.median(tree.query(Q[:: max(1, len(Q) // 20000)], k=2, workers=-1)[0][:, 1]))
+    tol = max(2 * r.cell, 3 * sp)
+    d, _ = tree.query(r.verts, distance_upper_bound=tol, workers=-1)
+    keep = np.isfinite(d)[r.tris].all(1)
+    # el flequillo: en el borde, fuera los triángulos cuyo centro se sale más de 1 celda del escaneo (por dentro no,
+    # que agujerearía las concavidades que Poisson alisa)
+    dc, _ = tree.query(r.verts[r.tris].mean(1), distance_upper_bound=max(r.cell, 2 * sp), workers=-1)
+    far = ~np.isfinite(dc)
+    for _ in range(3):
+        idx = np.flatnonzero(keep)
+        t = r.tris[idx]
+        e = np.sort(np.concatenate([t[:, [0, 1]], t[:, [1, 2]], t[:, [2, 0]]]), 1)
+        key = e[:, 0].astype(np.int64) * len(r.verts) + e[:, 1]
+        u, inv, c = np.unique(key, return_inverse=True, return_counts=True)
+        edge = (c[inv.ravel()] == 1).reshape(3, -1).any(0)
+        drop = idx[edge & far[idx]]
+        if not len(drop):
+            break
+        keep[drop] = False
+    tris = r.tris[keep]
+    if len(tris):                                       # fuera los trocitos sueltos
+        n = len(r.verts)
+        e = np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]]])
+        g = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n))
+        _, lab = connected_components(g, directed=False)
+        tl = lab[tris[:, 0]]
+        tris = tris[np.bincount(tl)[tl] >= 0.01 * len(tris)]
+    used = np.zeros(len(r.verts), bool)
+    used[tris.ravel()] = True
+    remap = np.cumsum(used) - 1
+    verts, tris = r.verts[used], remap[tris]
+    vcol = r.vcolors[used] if r.vcolors is not None else None
+    e = np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), 1)
+    _, c = np.unique(e[:, 0].astype(np.int64) * len(verts) + e[:, 1], return_counts=True)
+    log(f'Superficie abierta: se quitan {len(r.tris) - len(tris):,} triángulos sin escaneo debajo (base, paredes, '
+        f'huecos rellenados); quedan {len(tris):,}, con {int((c == 1).sum()):,} aristas de borde')
+    return replace(r, verts=verts, tris=tris, vcolors=vcol, bad_edges=int((c > 2).sum()), volume=0.0,
+                   open_edges=max(1, int((c == 1).sum())), dev=None)
 
 
 BOOST_AUTO = (0.1, 0.5, 3.0)        # «auto»: desde, hasta y anchura del realce en mm de la pieza
@@ -1892,11 +1968,12 @@ def _decimate_mesh(V, T, vcol, target, workers, log=lambda s: None):
 def _decimate_mesh_n(V, T, vcol, target, workers, log=lambda s: None):
     import pymeshlab
     out = None
+    bad0 = _bad_edges(T, len(V))                           # una superficie abierta ya trae su borde
     workers = min(workers, len(T) // MIN_TRIS_PER_STRIP)   # franjas demasiado finas no compensan
     if workers > 1:
         try:
             out = _decimate_parallel(V, T, vcol, target / len(T), workers)
-            if _bad_edges(out[1], len(out[0])):
+            if _bad_edges(out[1], len(out[0])) > bad0:
                 log('AVISO: la simplificación en paralelo no cosió bien las franjas; se repite en un solo proceso')
                 out = None
         except Exception as e:  # noqa: BLE001
@@ -1910,7 +1987,7 @@ def _decimate_mesh_n(V, T, vcol, target, workers, log=lambda s: None):
         m = ms.current_mesh()
         c = (m.vertex_color_matrix()[:, :3] * 255).round().astype(np.uint8) if vcol is not None else None
         out = (m.vertex_matrix(), m.face_matrix().astype(np.int64), c)
-    if _bad_edges(out[1], len(out[0])):
+    if _bad_edges(out[1], len(out[0])) > bad0:
         return None
     return out
 
@@ -1956,7 +2033,7 @@ def _decimate_selected(V, T, vcol, sel, target):
     m = ms.current_mesh()
     out = (m.vertex_matrix() / k + c, m.face_matrix().astype(np.int64),
            (m.vertex_color_matrix()[:, :3] * 255).round().astype(np.uint8) if vcol is not None else None)
-    return None if _bad_edges(out[1], len(out[0])) else out
+    return None if _bad_edges(out[1], len(out[0])) > _bad_edges(T, len(V)) else out
 
 
 def simplify_zoned(r, tol_out, tol_in, inside, log=lambda s: None):
@@ -2023,8 +2100,15 @@ def zone_on_mesh(r, verts=None):
 
 def _simplified(r, out, err):
     verts, tris, vcol = out
-    return Result(verts, tris, vcol, r.grid, r.cell, r.scale, r.angle, 0, _volume(verts, tris),
-                  err[0], err[2], r.mode, err[1], r.res, xform=r.xform, hollow=r.hollow, zclip=r.zclip, corner=r.corner)
+    if r.open_edges:                                   # superficie abierta: conserva su borde, sin volumen
+        e = np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), 1)
+        _, c = np.unique(e[:, 0].astype(np.int64) * len(verts) + e[:, 1], return_counts=True)
+        bad, vol, ope = int((c > 2).sum()), 0.0, max(1, int((c == 1).sum()))
+    else:
+        bad, vol, ope = 0, _volume(verts, tris), 0
+    return Result(verts, tris, vcol, r.grid, r.cell, r.scale, r.angle, bad, vol,
+                  err[0], err[2], r.mode, err[1], r.res, xform=r.xform, hollow=r.hollow, zclip=r.zclip, corner=r.corner,
+                  open_edges=ope)
 
 
 def simplify(r: Result, pct, log=lambda s: None, workers=None):

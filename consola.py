@@ -117,11 +117,11 @@ def cli(argv):
         if eid:
             registro.update(eid, ficha=os.path.abspath(a.ficha))
     sx, sy, sz = r.size
-    mat = (relief.fmt_vol(r.volume) if relief.is_real(prm) else
+    mat = (relief.vol_text(r) if relief.is_real(prm) else
            f'{r.grams_pla:.0f} g PLA {"(hueca)" if r.hollow else "macizo"}')
     print(f'Guardado {a.salida}: {sx:.1f} x {sy:.1f} x {sz:.1f} mm, {mat}, '
-          f'{"cerrada" if r.bad_edges == 0 else "NO cerrada"}, {time.time() - t:.1f} s')
-    return 0 if r.bad_edges == 0 else 1
+          f'{relief.mesh_state(r)[1] if relief.mesh_state(r)[0] else "NO cerrada"}, {time.time() - t:.1f} s')
+    return 0 if relief.mesh_state(r)[0] else 1
 
 
 def main(argv):

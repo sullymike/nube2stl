@@ -194,11 +194,10 @@ def make_pdf(path, r, prm, source=None, log_text='', label_fn=None):
                  ('Escala', scale + (' (copia sin impresora)' if getattr(prm, 'target', '') == 'real' else
                                     f' (fijada 1:{prm.ratio:g})' if prm.ratio > 0 else ' (por el lado mayor)')),
                  ('Método', r.mode),
-                 ('Volumen', relief.fmt_vol(r.volume) if getattr(prm, 'target', '') == 'real' else
+                 ('Volumen', relief.vol_text(r) if getattr(prm, 'target', '') == 'real' else
                   f'{r.volume / 1000:,.1f} cm³ · PLA ' + ('(hueca)' if r.hollow else 'macizo')
                   + f' ≈ {r.grams_pla:,.0f} g'),
-                 ('Malla', f'{len(r.tris):,} triángulos · ' + ('cerrada' if r.bad_edges == 0 else
-                                                              f'{r.bad_edges} aristas abiertas')),
+                 ('Malla', f'{len(r.tris):,} triángulos · ' + relief.mesh_state(r)[1]),
                  ('Resolución', f'{r.res:.3g} mm en la nube → celda de {r.cell:.3f} mm en la pieza'),
                  ('Simplificación', f'error medio {r.err_mean:.3f} mm, p99 {r.err_p99:.3f} mm' if r.err_max
                   else 'sin simplificar')]

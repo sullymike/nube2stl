@@ -494,7 +494,14 @@ que el resto.
   `Modos3D.test_bloque_celda_gruesa`. El modo 3d tiene el mismo filtro, pero allí es a propósito (solo la cara).
 
 - Copia a tamaño real como superficie abierta (sin base), y por trozos para piezas que ni Poisson con 12 niveles
-  cubre al detalle del escaneo.
+  cubre al detalle del escaneo. — *Superficie abierta HECHA el 18-11-2026 (0.25.0)*: parámetro `open_mesh` (solo con
+  «Copia sin impresora»), `relief.open_surface` sobre la malla ya hecha (cualquier tipo): se quedan los triángulos con
+  los tres vértices a menos de 2 celdas o 3 separaciones del escaneo, y en el borde se quita en tres pasadas el
+  flequillo cuyo centro se sale más de 1 celda (con 1 celda para todo, la vasija se agujereaba: 26.400 aristas de
+  borde frente a 1.300); fuera los trozos de menos del 1 %. `Result.open_edges` (aristas de borde; `bad_edges` pasa a
+  contar las de más de dos caras), `mesh_state`, `vol_text`; la simplificación acepta las aristas que ya traía la
+  malla (las de borde se conservan). Lápida: 120.000 de 238.000 triángulos fuera; bloque, 37.000; vasija, 21.000.
+  Prueba `TamanoReal.test_superficie_abierta`. Pendiente: por trozos.
 
 - Probar con datos reales: A5 (un LAS del PNOA), A7 (una cueva o una cisterna escaneadas) y C (dos escaneos de una esquina).
 - Dos caras con canto escaneado: proponer unir (A1) en vez de reverso cuando las nubes se solapan — *HECHO el
