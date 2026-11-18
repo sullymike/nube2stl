@@ -615,6 +615,26 @@ class Ejemplos(unittest.TestCase):
 class Union(unittest.TestCase):
     """Unir otra nube a la abierta: ya alineada, por pares de puntos (Kabsch) y automática con solape."""
 
+    def test_separacion(self):
+        """Color «separación» de la ventana de unir: distancia con signo de la añadida a la principal en la zona
+        común. Placa a z = 0; la añadida 0,5 mm por encima da +0,5; girada, un lado + y el otro −; lejos, NaN."""
+        import unir
+        rng = np.random.default_rng(2)
+        A = np.c_[rng.uniform(0, 100, (40_000, 2)), np.zeros(40_000)]
+        B = np.c_[rng.uniform(50, 150, (20_000, 2)), np.full(20_000, 0.5)]
+        d = unir.separation(A, B, 3.0)
+        fin = np.isfinite(d)
+        self.assertGreater(fin.mean(), 0.2)
+        self.assertFalse(fin[(B[:, 0] > 105) | (B[:, 1] > 105)].any())       # fuera de la principal
+        self.assertAlmostEqual(abs(float(np.median(d[fin]))), 0.5, places=2)
+        s0 = np.sign(np.median(d[fin]))
+        Bt = B.copy()
+        Bt[:, 2] = 0.02 * (B[:, 0] - 75)                                     # girada alrededor de x = 75
+        dt = unir.separation(A, Bt, 3.0)
+        lo, hi = np.isfinite(dt) & (B[:, 0] < 65), np.isfinite(dt) & (B[:, 0] > 85)
+        self.assertLess(s0 * np.median(dt[lo]), 0)
+        self.assertGreater(s0 * np.median(dt[hi]), 0)
+
     @staticmethod
     def _rot(seed):
         rng = np.random.default_rng(seed)

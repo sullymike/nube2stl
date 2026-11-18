@@ -36,7 +36,10 @@ la matriz en `Params.merge` y `--unir` en la consola para nubes ya alineadas.
 **Pendiente de A1:**
 - igualar el color entre tandas;
 - en la zona común, quedarse con los puntos mejor vistos;
-- la vista de comprobación coloreada por separación (hoy: verde = zona común).
+- la vista de comprobación coloreada por separación — *HECHO el 18-11-2026 (0.25.0)*: color «separación» en la
+  ventana de unir (`unir.separation`: distancia con signo a la superficie de la principal, normales PCA orientadas
+  como la cara si es casi plana o hacia fuera si es un objeto; escala ± p95). Prueba `Union.test_separacion`. Dos
+  mitades de la lápida: bien, p95 0,15 mm; giradas 1°, 1,1 mm y un degradado de un lado a otro.
 
 **Propuesta original:**
 

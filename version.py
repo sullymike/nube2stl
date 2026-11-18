@@ -18,6 +18,8 @@ HISTORY = [
         'un fragmento suelto) deja solo lo que está unido a ese punto, o lo quita',
         'Recortar › «▣ caja con medidas…»: x, y, z mínimos y máximos en mm, con la caja dibujada en la vista; para '
         'recortes exactos o repetir el mismo en otra nube con las mismas coordenadas',
+        'Unir nubes: color «separación», a cuánto queda la nube añadida de la principal en la zona común (blanco, '
+        'rojo por encima, azul por debajo): un lado rojo y otro azul delata una alineación girada',
     ]),
     ('0.24.0', 'noviembre 2026', [
         'Zonas de detalle con pincel: botón propio «🖌 Zona de detalle» en la vista de la nube (antes estaba escondido '

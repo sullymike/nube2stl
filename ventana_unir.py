@@ -58,9 +58,7 @@ class MergeDialog(QDialog):
 
         lay = QHBoxLayout(self)
         self.viewer = visor.Viewer3D(colors['view'], 'nube', colors)
-        self.viewer.crop_btn.hide()
-        for w in self.viewer.crop_tools:
-            w.hide()
+        self.viewer.hide_marks()
         self.viewer.extra_items = self._markers
         self.viewer.measure_btn.hide()                   # el clic marca los pares de puntos
         self.viewer.measure_lbl.hide()
@@ -164,12 +162,18 @@ class MergeDialog(QDialog):
         row = QHBoxLayout()
         row.addWidget(QLabel('Color'))
         self.color = QComboBox()
-        self.color.addItems(['azul y naranja', 'zona común', 'colores reales'])
+        self.color.addItems(['azul y naranja', 'zona común', 'separación', 'colores reales'])
         self.color.setToolTip('azul y naranja: cada nube de un color.\nzona común: en verde los puntos de la añadida '
-                              'que caen sobre la principal.\ncolores reales: los del escaneo.')
+                              'que caen sobre la principal.\nseparación: en la zona común, a cuánto queda la añadida '
+                              'de la principal: blanco = coinciden,\nrojo = por encima (fuera), azul = por debajo; '
+                              'un lado rojo y otro azul = la alineación está girada.\nEn gris lo que no está en la '
+                              'zona común y la principal.\ncolores reales: los del escaneo.')
         self.color.currentTextChanged.connect(lambda *_: self._show(home=False))
         row.addWidget(self.color, 1)
         v.addLayout(row)
+        self.sep_lbl = note('')
+        self.sep_lbl.hide()
+        v.addWidget(self.sep_lbl)
         v.addStretch(1)
         brow = QHBoxLayout()
         cancel = QPushButton('Cancelar')
@@ -305,6 +309,23 @@ class MergeDialog(QDialog):
             sp = self.q['sp'] if self.q else unir.spacing(self.As)
             cb = np.array(cb, np.float64)
             cb[d < 4 * max(sp, unir.spacing(self.As))] = COL_NEAR
+        self.sep_lbl.setVisible(mode == 'separación' and self.M is not None)
+        if mode == 'separación' and self.M is not None:
+            import desviacion
+            sp = max(self.q['sp'] if self.q else 0.0, unir.spacing(self.As))
+            d = unir.separation(self.As, Bd, 4 * sp)
+            fin = np.isfinite(d)
+            lim = max(float(np.percentile(np.abs(d[fin]), 95)) if fin.any() else 0.0, 0.5 * sp, 0.01)
+            cb = desviacion.colors(d, lim) / 255.0
+            ca = np.tile([0.80, 0.81, 0.82], (len(self.As), 1))
+            f = lambda x: f'{x:.2g}'.replace('.', ',')                  # noqa: E731
+            if fin.any():
+                med = float(np.median(d[fin]))
+                self.sep_lbl.setText(
+                    f'Separación en la zona común ({100 * fin.mean():.0f} % de la añadida): mediana {f(med)} mm, '
+                    f'95 % a menos de {f(lim)} mm. Colores: ±{f(lim)} mm (azul por debajo, rojo por encima).')
+            else:
+                self.sep_lbl.setText('No hay zona común: las nubes no se tocan con esta alineación.')
         self.Bd = Bd
         P = np.r_[self.As, Bd] - self.c0
         self.viewer.show_cloud(P.astype(np.float32), np.r_[ca, cb], None, home=home or self.viewer.view.home is None)

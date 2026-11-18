@@ -351,6 +351,32 @@ def _normals_at(tree, P, idx, k=12):
     return np.linalg.eigh(C)[1][:, :, 0]
 
 
+def separation(A, B, near):
+    """Separación de cada punto de B a la superficie de A, con signo (+ por fuera / encima de A), o NaN si no tiene
+    un punto de A a menos de near (fuera de la zona común). Las normales de A (PCA de 12 vecinos) no tienen lado:
+    se orientan como la cara si A es casi plana (un relieve) o hacia fuera del centro si es un objeto."""
+    A = np.asarray(A, np.float64)
+    B = np.asarray(B, np.float64)
+    out = np.full(len(B), np.nan)
+    if len(A) < 20 or not len(B):
+        return out
+    tree = kdtree(A)
+    d, j = tree.query(B, workers=-1)
+    ok = np.flatnonzero(d < near)
+    if not len(ok):
+        return out
+    n = _normals_at(tree, A, j[ok])
+    c = A[:: max(1, len(A) // 200_000)]
+    w, V = np.linalg.eigh(np.cov((c - c.mean(0)).T))
+    if w[0] < 0.1 * w[1]:                              # casi plana: todas hacia el lado de la normal de la cara
+        ref = np.broadcast_to(V[:, 0], n.shape)
+    else:                                              # un objeto: hacia fuera
+        ref = A[j[ok]] - c.mean(0)
+    n *= np.where(np.einsum('ij,ij->i', n, ref) < 0, -1.0, 1.0)[:, None]
+    out[ok] = np.einsum('ij,ij->i', B[ok] - A[j[ok]], n)
+    return out
+
+
 def overlap_refine(A, B, M0, r0, slide=(), log=lambda s: None, iters=30, nmax=30_000):
     """Afinar M0 con la zona común. Primero se busca, en una rejilla, el desplazamiento a lo largo de «slide»
     (direcciones en las que una franja casi lisa apenas tira: a lo largo de la arista y por la propia franja), que
