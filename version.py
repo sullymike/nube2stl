@@ -14,6 +14,8 @@ HISTORY = [
         'una transición suave; fuera queda lisa y al simplificar se queda con triángulos grandes. En una prueba, el '
         'error en la zona bajó de 0,30 a 0,10 mm (0,09 con toda la pieza fina)',
         'La simplificación por zonas mira también el error máximo: ya no mete las esquinas de la pared',
+        'Recortar › «👆 una parte (clic)»: un clic sobre una pieza separada del resto (una estatua entre varias, '
+        'un fragmento suelto) deja solo lo que está unido a ese punto, o lo quita',
     ]),
     ('0.24.0', 'noviembre 2026', [
         'Zonas de detalle con pincel: botón propio «🖌 Zona de detalle» en la vista de la nube (antes estaba escondido '

@@ -354,7 +354,12 @@ que el resto.
     clic (centrar la vista).
   - **Caja 3D con medidas** (mín./máx. en x, y, z, o alrededor de un punto con un radio): para repetir el mismo
     recorte en otra nube o en otra fecha. Esfuerzo: pequeño–medio.
-  - **Quedarse con un grupo** con un clic (como ya se marcan los grupos sueltos). Esfuerzo: pequeño.
+  - **Quedarse con un grupo** con un clic — *HECHO el 18-11-2026 (0.25.0)*. ✂ Recortar › «👆 una parte (clic)»:
+    el recorte `{'part': [x, y, z], 'inside'}` deja (o quita) la parte conectada con el punto del clic, entre lo que
+    han dejado los recortes anteriores (`entrada.part_mask`, con la misma rejilla de vóxeles que los grupos sueltos:
+    `part_cell` y `part_labels`, sacados de `clean_mask`). Con esta forma el botón izquierdo sigue girando.
+    Prueba `Recorte.test_una_parte`: tres esferas separadas; dos que se tocan son una parte, y se separan
+    quitando la unión con un rectángulo. En la ventana: tres vasijas, un clic en la del medio la deja sola.
 
 ### G2. Zona de detalle — *HECHA en 0.23.0 para los tipos con Poisson; mapa de alturas (primera versión) en 0.25.0*
 

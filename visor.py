@@ -492,6 +492,7 @@ class Viewer3D(QWidget):
                                                     # ('dentro', 'fuera'; 'detalle' o 'detalle-borrar': zona de
                                                     # detalle, no recorta)
     zone_brushed = pyqtSignal(object, float, bool)  # nube: trazo del pincel (centros en la vista, radio, borrar)
+    part_picked = pyqtSignal(object, str)           # nube: clic en una parte (punto en la vista, 'dentro'/'fuera')
     crop_undo = pyqtSignal()
     crop_clear = pyqtSignal()
     HINT = ('<b>Izq.</b> girar · <b>Der.</b>, <b>central</b> o <b>Mayús+izq.</b> desplazar · <b>Rueda</b> zoom hacia '
@@ -566,9 +567,12 @@ class Viewer3D(QWidget):
             bl.addWidget(cr)
             self.crop_btn = cr
             sh = QComboBox()
-            sh.addItems(['▭ rectángulo', '◌ lazo'])
+            sh.addItems(['▭ rectángulo', '◌ lazo', '👆 una parte (clic)'])
             sh.setToolTip('Forma: rectángulo (arrastrar de una esquina a otra) o lazo (dibujar el contorno a mano\n'
-                          'alzada, con el botón pulsado; al soltar se cierra)')
+                          'alzada, con el botón pulsado; al soltar se cierra).\n'
+                          'Una parte: clic sobre una pieza separada del resto (una estatua entre varias, un\n'
+                          'fragmento suelto): se deja solo ella o se quita, todo lo que está unido a ese punto.\n'
+                          'Con esta, el botón izquierdo sigue girando la vista.')
             bl.addWidget(sh)
             self.crop_shape = sh
             cm = QComboBox()
@@ -903,15 +907,18 @@ class Viewer3D(QWidget):
                 w.setVisible(zone)
             self.zone_size.setVisible(brush)
         v = self.view
-        v.crop_mode = crop or (zone and not brush)
+        part = crop and self.crop_shape.currentIndex() == 2
+        v.crop_mode = (crop and not part) or (zone and not brush)
         if crop:
-            v.crop_shape = 'lazo' if self.crop_shape.currentIndex() else 'rect'
+            v.crop_shape = ('rect', 'lazo', 'parte')[self.crop_shape.currentIndex()]
         elif zone:
             v.crop_shape = 'lazo' if self.zone_tool.currentIndex() == 1 else 'rect'
         erase = zone and self.zone_erase.currentIndex() == 1
         v.set_brush(self.BRUSH[self.zone_size.currentText()] if brush else 0, erase)
         v.set_draw_erase(erase)
-        if crop or zone:
+        if part:
+            v.setCursor(Qt.PointingHandCursor)
+        elif crop or zone:
             v.setCursor(Qt.CrossCursor)
         elif not self.measure_btn.isChecked():
             v.unsetCursor()
@@ -953,6 +960,11 @@ class Viewer3D(QWidget):
             return
         if self.measure_btn.isChecked():
             self._measure_click(pos)
+            return
+        if self.kind == 'nube' and self.crop_btn.isChecked() and self.crop_shape.currentIndex() == 2:
+            p = self.view.point_at(pos)
+            if p is not None:
+                self.part_picked.emit(p, self.CROP_HOW[self.crop_how.currentIndex()])
             return
         if self.view.crop_mode or self.view.brush_r:
             return

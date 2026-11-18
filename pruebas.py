@@ -456,6 +456,34 @@ class Recorte(unittest.TestCase):
         q, *_ = entrada.load_points(p, relief.Params(units='mm', clean=False, crop=[c]))
         self.assertEqual(len(q), int(ref.sum()))
 
+    def test_una_parte(self):
+        """«Una parte (clic)»: tres esferas separadas; se deja (o se quita) la del punto del clic. Si dos se tocan,
+        no se separan, pero sí después de recortar la unión con un rectángulo."""
+        rng = np.random.default_rng(4)
+
+        def sphere(c, r, n):
+            v = rng.normal(size=(n, 3))
+            return c + r * v / np.linalg.norm(v, axis=1, keepdims=True)
+        a, b, c = sphere([0, 0, 0], 50, 40_000), sphere([200, 0, 0], 50, 40_000), sphere([0, 200, 0], 30, 20_000)
+        xyz = np.r_[a, b, c].astype(np.float32)
+        k = entrada.crop_mask(xyz, [{'part': [200, 0, 50], 'inside': True}])      # clic en lo alto de b
+        self.assertTrue(k[40_000:80_000].all())
+        self.assertFalse(k[:40_000].any() or k[80_000:].any())
+        k = entrada.crop_mask(xyz, [{'part': [0, 200, 30], 'inside': False}])     # quitar c
+        self.assertEqual(int(k.sum()), 80_000)
+        self.assertFalse(k[80_000:].any())
+        # dos esferas que se tocan: una sola parte
+        d = sphere([95, 0, 0], 50, 40_000)
+        xyz2 = np.r_[a, d].astype(np.float32)
+        self.assertEqual(int(entrada.crop_mask(xyz2, [{'part': [0, 0, 50]}]).sum()), 80_000)
+        # quitando la unión con un rectángulo (vista desde arriba, la franja 40 < x < 55), sí
+        M = np.eye(4)
+        M[:3, :3] /= 200
+        band = {'M': M.ravel().tolist(), 'poly': [[0.2, -1], [0.275, -1], [0.275, 1], [0.2, 1]], 'inside': False}
+        k = entrada.crop_mask(xyz2, [band, {'part': [0, 0, 50]}])
+        self.assertTrue(k[:40_000][a[:, 0] < 40].all())
+        self.assertFalse(k[40_000:].any())
+
     def test_vistas(self):
         p = np.random.default_rng(1).normal(size=(5000, 3)).astype(np.float32)
         for view, n in relief.VIEWS.items():

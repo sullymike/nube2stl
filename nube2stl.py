@@ -1968,6 +1968,7 @@ class MainWindow(QMainWindow):
             self.cloud_view.group_clicked.connect(self._group_clicked)
             self.cloud_view.crop_drawn.connect(self._crop_drawn)
             self.cloud_view.zone_brushed.connect(self._zone_brushed)
+            self.cloud_view.part_picked.connect(self._crop_part)
             self.cloud_view.crop_undo.connect(self._crop_undo)
             self.cloud_view.crop_clear.connect(self._crop_clear)
             self.cloud_view.set_crop_state(0)
@@ -3684,6 +3685,17 @@ class MainWindow(QMainWindow):
         self._marks.append('crop')
         self._set_crops(self.crops + [c], f'Recorte {len(self.crops) + 1}: '
                         + (f'se deja lo de dentro {shape}' if c['inside'] else f'se quita lo de dentro {shape}'))
+
+    def _crop_part(self, point, how):
+        """Clic en una parte con «una parte (clic)»: dejar solo lo conectado con ese punto, o quitarlo."""
+        if getattr(self, 'xyz_all', None) is None or self.busy():
+            return
+        P = np.asarray(point, np.float64) + np.asarray(self._cloud_center, np.float64)
+        c = {'part': [round(float(x), 3) for x in P], 'inside': how == 'dentro'}
+        self._marks.append('crop')
+        self._set_crops(self.crops + [c], f'Recorte {len(self.crops) + 1}: '
+                        + ('se deja solo la parte del clic (lo unido a ese punto)' if c['inside'] else
+                           'se quita la parte del clic (lo unido a ese punto)'))
 
     def _add_detail(self, z, msg):
         if getattr(self.params(), 'corner', False):

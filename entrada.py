@@ -436,16 +436,10 @@ def to_mm(xyz, units, log=lambda s: None):
 
 
 # ------------------------------------------------------------------ limpieza
-def clean_mask(xyz, log=lambda s: None, min_frac=0.02, keep_groups=(), info=None):
-    """Máscara de los puntos que se quedan: los de las partes conectadas con al menos min_frac de los puntos de la
-    mayor (en una rejilla de vóxeles de ~1/300 del tamaño de la nube, o 2,5 veces la separación entre puntos si es
-    mayor, uniendo vóxeles vecinos).
-    keep_groups: centros (mm) de grupos sueltos que se conservan igualmente (los que el usuario marca en la vista).
-    info: si es un dict, se rellena con los grupos sueltos: 'groups' (m,3) centros, 'group_n' puntos de cada uno,
-    'loose_idx' índices de sus puntos, 'loose_grp' grupo de cada uno y 'group_tol' (tolerancia para reconocerlos)."""
+def part_cell(xyz):
+    """Lado de los vóxeles con los que se buscan las partes separadas de una nube: ~1/300 de su tamaño, o 2,5 veces
+    la separación entre puntos si es mayor."""
     n = len(xyz)
-    if n < 1000:
-        return np.ones(n, bool)
     q = xyz[:: max(1, n // 500_000)]
     lo, hi = np.percentile(q, 0.05, 0), np.percentile(q, 99.95, 0)
     g = float((hi - lo).max()) / 300
@@ -455,7 +449,14 @@ def clean_mask(xyz, log=lambda s: None, min_frac=0.02, keep_groups=(), info=None
     r = float((hi - lo).max()) / 150
     occ = len(np.unique(np.floor((q - lo) / r).astype(np.int64), axis=0))
     spacing = np.sqrt(occ * r * r / 1.5 / n)
-    g = max(g, 2.5 * spacing)
+    return max(g, 2.5 * spacing)
+
+
+def part_labels(xyz, g):
+    """Partes conectadas de la nube, uniendo vóxeles de lado g vecinos (también en diagonal, y con un vóxel de
+    margen). -> (uk, inv, cnt, vl, k, g): vóxeles ocupados, vóxel de cada punto, puntos por vóxel, parte de cada
+    vóxel ocupado (1…k) y el lado usado (más grueso si la nube tiene puntos muy lejanos)."""
+    n = len(xyz)
     lo = xyz.min(0)
     dims = np.floor((xyz.max(0) - lo) / g).astype(np.int64) + 1
     if np.prod(dims) > 30_000_000:                     # nube con puntos muy lejanos: rejilla más gruesa
@@ -471,10 +472,34 @@ def clean_mask(xyz, log=lambda s: None, min_frac=0.02, keep_groups=(), info=None
     occ[uk] = True
     occ = occ.reshape(dims)
     lab, k = ndimage.label(ndimage.binary_dilation(occ, np.ones((3, 3, 3), bool)), np.ones((3, 3, 3), int))
+    return uk, inv.ravel(), cnt, lab.ravel()[uk], k, g
+
+
+def part_mask(xyz, point):
+    """Puntos de la parte conectada que contiene (o tiene más cerca) point: una pieza separada del resto."""
+    if len(xyz) < 10:
+        return np.ones(len(xyz), bool)
+    _, inv, _, vl, k, _ = part_labels(xyz, part_cell(xyz))
+    pl = vl[inv]
+    from scipy.spatial import cKDTree
+    _, j = cKDTree(xyz[:: max(1, len(xyz) // 2_000_000)]).query(np.asarray(point, np.float64))
+    return pl == pl[j * max(1, len(xyz) // 2_000_000)]
+
+
+def clean_mask(xyz, log=lambda s: None, min_frac=0.02, keep_groups=(), info=None):
+    """Máscara de los puntos que se quedan: los de las partes conectadas con al menos min_frac de los puntos de la
+    mayor (en una rejilla de vóxeles de ~1/300 del tamaño de la nube, o 2,5 veces la separación entre puntos si es
+    mayor, uniendo vóxeles vecinos).
+    keep_groups: centros (mm) de grupos sueltos que se conservan igualmente (los que el usuario marca en la vista).
+    info: si es un dict, se rellena con los grupos sueltos: 'groups' (m,3) centros, 'group_n' puntos de cada uno,
+    'loose_idx' índices de sus puntos, 'loose_grp' grupo de cada uno y 'group_tol' (tolerancia para reconocerlos)."""
+    n = len(xyz)
+    if n < 1000:
+        return np.ones(n, bool)
+    uk, inv, cnt, vl, k, g = part_labels(xyz, part_cell(xyz))
     if k <= 1:
         log('Puntos sueltos: no hay grupos de puntos separados de la pieza')
         return np.ones(n, bool)
-    vl = lab.ravel()[uk]                                  # parte de cada vóxel ocupado
     pts = np.bincount(vl, cnt, k + 1)
     keep_l = pts >= min_frac * pts.max()
     keep_l[0] = False
@@ -513,10 +538,17 @@ def crop_mask(xyz, crops):
     """Máscara de los puntos que quedan tras los recortes hechos en la vista de la nube. Cada recorte es un dict:
     'M' matriz 4×4 (16 números, por filas) que lleva los puntos (mm) a la pantalla de aquel momento (coordenadas
     normalizadas −1…1), 'poly' el polígono dibujado en esa pantalla [[x, y], …] y 'inside' True = quedarse con lo
-    de dentro (False = quitar lo de dentro). Se aplican en orden."""
+    de dentro (False = quitar lo de dentro). O bien 'part' [x, y, z]: la parte conectada con ese punto (clic en
+    una pieza separada), entre lo que han dejado los recortes anteriores. Se aplican en orden."""
     from matplotlib.path import Path
     keep = np.ones(len(xyz), bool)
     for c in crops or ():
+        if 'part' in c:                       # una parte (clic): la conectada con ese punto, entre lo que queda
+            idx = np.flatnonzero(keep)
+            if len(idx):
+                inside = part_mask(xyz[idx], c['part'])
+                keep[idx] = inside if c.get('inside', True) else ~inside
+            continue
         M = np.asarray(c['M'], np.float64).reshape(4, 4)
         path = Path(np.asarray(c['poly'], np.float64))
         lo, hi = np.asarray(c['poly']).min(0), np.asarray(c['poly']).max(0)
