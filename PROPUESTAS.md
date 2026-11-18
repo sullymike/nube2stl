@@ -497,7 +497,12 @@ que el resto.
   cubre al detalle del escaneo.
 
 - Probar con datos reales: A5 (un LAS del PNOA), A7 (una cueva o una cisterna escaneadas) y C (dos escaneos de una esquina).
-- Dos caras con canto escaneado: proponer unir (A1) en vez de reverso cuando las nubes se solapan.
+- Dos caras con canto escaneado: proponer unir (A1) en vez de reverso cuando las nubes se solapan — *HECHO el
+  18-11-2026 (0.25.0)*: `unir.reverse_hint` al añadir el reverso. 'igual' si ya comparten coordenadas y se tocan
+  (`quality` con la identidad: > 2 % y rms < 3 separaciones); 'canto' si las dos traen canto (`edge_fraction`:
+  normal a más de 60° de la de la cara y en el borde de la silueta de frente; cara con canto 0,2–0,3, lápida y roca 0,
+  terreno 0 aunque tiene el 29 % de puntos inclinados). Ventana «Reverso o unir» con «Unir las nubes» (abre la de
+  unir, que ya elige «ya alineadas») o «Reverso igualmente». Prueba `Union.test_reverso_o_unir` (losa de dos caras).
 - Comparar más de dos fechas (serie temporal) en un mismo informe.
 - «Mirar desde: auto» se equivoca de lado en una lápida con un marco alto y ancho (un listel de 6 mm en un
   cuarto de la superficie): el marco parece la cola de los laterales de un bloque. Lo resuelve «Darle la vuelta»;

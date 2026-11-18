@@ -3077,6 +3077,8 @@ class MainWindow(QMainWindow):
         if os.path.abspath(path) == os.path.abspath(self.path):
             QMessageBox.warning(self, 'Reverso', 'El reverso tiene que ser otro fichero: el escaneo de la otra cara.')
             return
+        if not self._reverse_or_merge(path):
+            return
         self.reverse = [dict(path=path, units=self.params().units, angle=None, flip=None)]
         if self.widgets['mode'].currentText() != 'alturas':
             self._kind_clicked('relieve')
@@ -3084,6 +3086,39 @@ class MainWindow(QMainWindow):
         self.say(f'Reverso: {os.path.basename(path)}. Al generar se pone debajo de la cara, girado para que los '
                  f'contornos coincidan; «Grosor base» es el alma entre las dos caras.')
         self.update_steps()
+
+    def _reverse_or_merge(self, path):
+        """Antes de poner un reverso: si las dos nubes se solapan o traen el canto, proponer unirlas (unir.py), que da
+        la pieza real con su grosor. -> True para seguir con el reverso."""
+        import unir
+        QApplication.setOverrideCursor(Qt.BusyCursor)
+        try:
+            B = unir.read_extra(path, 'igual', self.load_info)[0]
+            kind, text = unir.reverse_hint(self.xyz_all, B)
+        except Exception:
+            traceback.print_exc()
+            return True
+        finally:
+            QApplication.restoreOverrideCursor()
+        if kind is None:
+            return True
+        how = ('Uniéndolas tal como están' if kind == 'igual' else
+               'Uniéndolas (el canto es la zona común con la que se alinean)')
+        box = QMessageBox(QMessageBox.Question, 'Reverso o unir', f'{text}<br><br>{how} sale la pieza entera con su '
+                          'grosor y su canto de verdad, en vez de inventar el alma entre las dos caras como hace el '
+                          'reverso. «Unir las nubes» abre la ventana de <i>Archivo › Unir otra nube</i>; después elige '
+                          'el tipo <i>objeto</i> o <i>bloque</i>.', parent=self)
+        b_merge = box.addButton('Unir las nubes', QMessageBox.AcceptRole)
+        b_rev = box.addButton('Reverso igualmente', QMessageBox.RejectRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(b_merge)
+        if os.environ.get('NUBE2STL_NO_ASK'):
+            return True
+        box.exec_()
+        if box.clickedButton() is b_merge:
+            self.merge_cloud(path)
+            return False
+        return box.clickedButton() is b_rev
 
     def _rev_note(self):
         if not hasattr(self, 'rev_lbl'):
@@ -3340,14 +3375,16 @@ class MainWindow(QMainWindow):
         else:
             self.unmerge(all_=what == 'all')
 
-    def merge_cloud(self):
+    def merge_cloud(self, path=None):
         """Archivo › Unir otra nube: elegir el fichero, encajarlo en su ventana y volver a leer todo junto."""
         if self.busy() or getattr(self, 'xyz_all', None) is None:
             self.say('Abre primero la nube principal; después podrás unirle otras.')
             return
         import entrada
         import ventana_unir
-        path, _ = QFileDialog.getOpenFileName(self, 'Unir otra nube', os.path.dirname(self.path), entrada.OPEN_FILTER)
+        if not isinstance(path, str):
+            path, _ = QFileDialog.getOpenFileName(self, 'Unir otra nube', os.path.dirname(self.path),
+                                                  entrada.OPEN_FILTER)
         if not path:
             return
         if os.path.abspath(path) in [os.path.abspath(self.path)] + [os.path.abspath(m['path']) for m in self.merges]:

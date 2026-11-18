@@ -674,6 +674,32 @@ class Union(unittest.TestCase):
             self.assertLess(mid.sum(), 1.3 * 60_000 * 14 / 60)                 # sin doble piel
             self.assertEqual(info['n_main'], int((xyz[:info['n_main'], 0] < 60.001).sum()))
 
+    def test_reverso_o_unir(self):
+        """Al añadir un reverso, proponer unir si las dos nubes se solapan o traen el canto: losa de 80 × 50 × 20 mm
+        escaneada por arriba y por abajo, cada vez con 14 mm del canto (se solapan 8). En las mismas coordenadas:
+        'igual'; movida en el escáner: 'canto'; dos caras sin canto (tablillas) o una lápida: nada."""
+        import unir
+        rng = np.random.default_rng(3)
+
+        def slab(n, top):
+            nf = int(n * .7)
+            x, y = rng.uniform(0, 80, nf), rng.uniform(0, 50, nf)
+            face = np.c_[x, y, np.full(nf, 20.0 if top else 0.0)]
+            ns = n - nf
+            t = rng.uniform(0, 260, ns)
+            z = rng.uniform(6, 20, ns) if top else rng.uniform(0, 14, ns)
+            xs = np.where(t < 80, t, np.where(t < 130, 80, np.where(t < 210, 210 - t, 0)))
+            ys = np.where(t < 80, 0, np.where(t < 130, t - 80, np.where(t < 210, 50, 260 - t)))
+            return np.r_[face, np.c_[xs, ys, z]] + rng.normal(0, .03, (n, 3))
+        A, B = slab(100_000, True), slab(100_000, False)
+        self.assertEqual(unir.reverse_hint(A, B)[0], 'igual')
+        self.assertEqual(unir.reverse_hint(A, B @ np.diag([1, -1, -1]) + [0, 300, 500])[0], 'canto')
+        tA = np.c_[rng.uniform(0, 80, 60_000), rng.uniform(0, 50, 60_000), rng.normal(0, .02, 60_000)]
+        tB = np.c_[rng.uniform(0, 80, 60_000), rng.uniform(0, 50, 60_000), rng.normal(0, .02, 60_000)] + [0, 0, -400]
+        self.assertIsNone(unir.reverse_hint(tA, tB)[0])
+        self.assertLess(unir.edge_fraction(ejemplos.lapida()[0]), 0.02)
+        self.assertLess(unir.edge_fraction(ejemplos.terreno()[0]), 0.02)       # curvatura, no canto
+
     @staticmethod
     def _rot(seed):
         rng = np.random.default_rng(seed)

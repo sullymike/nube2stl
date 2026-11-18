@@ -557,7 +557,9 @@ propuesta automática reconoce los fragmentos (una pieza curva con dos paredes) 
 <p>Escanea el anverso y el reverso por separado. Abre el anverso y elige <b>Archivo › Añadir el reverso (pieza de dos
 caras)…</b>. Al generar, el reverso se pone debajo de la cara: se calcula su mapa de alturas mirándolo desde su lado,
 se espeja (se ve desde detrás) y se gira para que <b>los contornos coincidan</b>. <a href="#p-base">Grosor base</a>
-pasa a ser el <b>alma</b> entre las dos caras. La nota bajo <i>Quitar grupos sueltos</i> lo resume y permite:</p>
+pasa a ser el <b>alma</b> entre las dos caras. Si los dos escaneos traen el canto (o ya están en las mismas
+coordenadas), el programa propone <a href="#unir">unirlos</a> en su lugar, que da la pieza real con su grosor. La nota
+bajo <i>Quitar grupos sueltos</i> lo resume y permite:</p>
 <ul>
   <li><b>giro…</b>: fijar el giro a mano. Hace falta en las piezas redondas (una moneda), donde el contorno es igual
       se gire como se gire: el registro lo avisa. Mira la orientación de la cara de una moneda real (el «eje» de la
@@ -640,6 +642,10 @@ del punto más cercano de la principal, y se corrige toda la añadida con una ga
 (R, G, B), sin contar las parejas que no cuadran (sombras, reflejos). Se ve con el color <i>colores reales</i>, y el
 registro dice la corrección aplicada. En una prueba con una mitad oscurecida y azulada a propósito (ganancias 0,75 /
 0,8 / 0,95), recupera 1,33 / 1,25 / 1,05, las inversas exactas, y la costura desaparece.</p>
+<p><b>¿Reverso o unir?</b> Si al añadir un reverso (Archivo › Añadir el reverso) las dos nubes ya están en las
+mismas coordenadas y se tocan, o las dos traen el canto escaneado, el programa propone unirlas: así sale la pieza real,
+con su grosor y su canto, en vez de inventar el alma entre las dos caras. El reverso queda para dos caras sueltas, sin
+canto ni zona común.</p>
 <p>Al unir, en la zona común se queda una sola piel, la de la nube que se ve mejor: se compara, por trozos de unas 20
 separaciones, cuánto se apartan los puntos de cada nube de su plano (el ruido). Si la añadida tiene bastante menos
 ruido (menos de 0,6 veces), allí se quedan sus puntos y se quitan los de la principal; si no, se quedan los de la

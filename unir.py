@@ -502,6 +502,47 @@ def _normals_at(tree, P, idx, k=12):
     return np.linalg.eigh(C)[1][:, :, 0]
 
 
+def edge_fraction(P, m=60_000, nc=64):
+    """Parte de la nube que es canto: puntos cuya normal está tumbada (más de 60° de la normal de la cara) y que caen
+    en el borde de la silueta vista de frente. Una cara sola (lápida, losa) da 0; una cara con el canto escaneado,
+    0,2–0,3. La curvatura de una superficie (un terreno) no cuenta porque no está en el borde."""
+    from scipy import ndimage
+    from scipy.spatial import cKDTree
+    P = np.asarray(P, np.float64)
+    if len(P) > m:
+        P = P[np.random.default_rng(0).choice(len(P), m, replace=False)]
+    if len(P) < 100:
+        return 0.0
+    c = P.mean(0)
+    V = np.linalg.eigh(np.cov((P - c).T))[1]
+    N = _normals_at(cKDTree(P), P, np.arange(len(P)), k=16)
+    side = np.abs(N @ V[:, 0]) < 0.5
+    uv = (P - c) @ V[:, 1:]
+    lo = uv.min(0)
+    g = float((uv.max(0) - lo).max()) / nc
+    ij = np.floor((uv - lo) / g).astype(int)
+    occ = np.zeros(ij.max(0) + 1, bool)
+    occ[ij[:, 0], ij[:, 1]] = True
+    occ = ndimage.binary_fill_holes(ndimage.binary_closing(occ, iterations=2) | occ)
+    d = ndimage.distance_transform_edt(np.pad(occ, 1))[1:-1, 1:-1]
+    return float((side & (d[ij[:, 0], ij[:, 1]] <= 2)).mean())
+
+
+def reverse_hint(A, B, edge=0.08):
+    """Al añadir un reverso: ¿sería mejor unir las dos nubes? -> ('igual' | 'canto' | None, texto).
+    'igual': ya están en las mismas coordenadas y se solapan (el escáner las registró juntas): uniéndolas sale la
+    pieza real, con su grosor y su canto. 'canto': las dos traen el canto, que es la zona común para alinearlas."""
+    q = quality(A, B, IDENTITY, n=20_000)
+    if q['overlap'] > 0.02 and q['rms'] < 3 * q['sp']:
+        return 'igual', (f'Las dos nubes ya están en las mismas coordenadas y se tocan ({100 * q["overlap"]:.0f}\u00a0% '
+                         f'de la segunda cae sobre la primera, seguramente el canto).')
+    ea, eb = edge_fraction(A), edge_fraction(B)
+    if ea >= edge and eb >= edge:
+        return 'canto', (f'Las dos nubes traen el canto (el {100 * ea:.0f}\u00a0% y el {100 * eb:.0f}\u00a0% de sus puntos '
+                         f'son laterales).')
+    return None, ''
+
+
 def separation(A, B, near):
     """Separación de cada punto de B a la superficie de A, con signo (+ por fuera / encima de A), o NaN si no tiene
     un punto de A a menos de near (fuera de la zona común). Las normales de A (PCA de 12 vecinos) no tienen lado:
