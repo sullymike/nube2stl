@@ -39,7 +39,16 @@ la matriz en `Params.merge` y `--unir` en la consola para nubes ya alineadas.
   tiene `'color'` (por defecto sí) y casilla «Igualar el color con la principal» en la ventana de unir (se ve con
   «colores reales»). Prueba `Union.test_igualar_color`. Mitad de la lápida con ganancias 0,75/0,8/0,95 y +0/+5/+25:
   recupera 1,33/1,25/1,05 y +1/−6/−26;
-- en la zona común, quedarse con los puntos mejor vistos;
+- en la zona común, quedarse con los puntos mejor vistos — *HECHO el 18-11-2026 (0.25.0)*: `unir.best_seen`, por
+  cubitos de 20 separaciones (mayores que 3 veces el ruido) que las dos nubes llenan, la de menos ruido respecto al
+  plano del cubito; la añadida gana si su ruido es < 0,6 veces el de la principal, y entonces se quitan los puntos de
+  la principal que están sobre los suyos (`_lying_on`: < 2 separaciones a lo largo de la superficie y < 4σ a lo largo
+  de la normal). Donde no gana, se quitan con la misma prueba los de la añadida que la de punto a punto no veía (doble
+  piel con ruido). Por defecto (`'best'` en la entrada). Prueba `Union.test_zona_comun_mejor_vista`: placa con ruido
+  0,5 / 0,05 mm, en la zona común queda 0,07 mm (antes 0,39); al revés, se queda la principal. Con dos mitades de la
+  lápida con el mismo ruido no gana ninguna (con cubitos de 5 separaciones ganaban 632 puntos por azar: un cubito
+  necesita unos 100 puntos para medir el ruido) y se quitan 4.700 puntos más de doble piel. Pendiente: «mejor vista»
+  por el ángulo de la vista o la distancia al escáner, que las nubes no suelen traer;
 - la vista de comprobación coloreada por separación — *HECHO el 18-11-2026 (0.25.0)*: color «separación» en la
   ventana de unir (`unir.separation`: distancia con signo a la superficie de la principal, normales PCA orientadas
   como la cara si es casi plana o hacia fuera si es un objeto; escala ± p95). Prueba `Union.test_separacion`. Dos

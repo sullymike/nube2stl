@@ -640,7 +640,10 @@ del punto más cercano de la principal, y se corrige toda la añadida con una ga
 (R, G, B), sin contar las parejas que no cuadran (sombras, reflejos). Se ve con el color <i>colores reales</i>, y el
 registro dice la corrección aplicada. En una prueba con una mitad oscurecida y azulada a propósito (ganancias 0,75 /
 0,8 / 0,95), recupera 1,33 / 1,25 / 1,05, las inversas exactas, y la costura desaparece.</p>
-<p>Al unir, se quitan de la nube añadida los puntos que repiten la zona común (para que no haya doble piel) y todo
+<p>Al unir, en la zona común se queda una sola piel, la de la nube que se ve mejor: se compara, por trozos de unas 20
+separaciones, cuánto se apartan los puntos de cada nube de su plano (el ruido). Si la añadida tiene bastante menos
+ruido (menos de 0,6 veces), allí se quedan sus puntos y se quitan los de la principal; si no, se quedan los de la
+principal, como antes. El registro dice cuántos puntos se quedan de cada una. Después todo
 sigue como con una sola nube: recortes, tipo de pieza, generar. La unión se guarda en los ajustes, como los recortes, y
 la recuerdan «Repetir», el registro de piezas y la consola (<code>--ajustes</code>). La nota bajo <i>Quitar grupos
 sueltos</i> dice qué nubes están unidas y permite quitar la última o todas. Si cambias las <i>Unidades de la

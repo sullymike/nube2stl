@@ -651,6 +651,29 @@ class Union(unittest.TestCase):
         self.assertEqual(out.dtype, np.uint8)
         self.assertLessEqual(int(out.max()), 255)
 
+    def test_zona_comun_mejor_vista(self):
+        """En la zona común se queda la nube con menos ruido: placa en dos tandas solapadas (x de 40 a 60); con la
+        principal ruidosa (0,5 mm) y la añadida limpia (0,05 mm), en la zona común quedan los de la añadida y sin
+        doble piel; al revés, los de la principal (como antes)."""
+        import unir
+        rng = np.random.default_rng(8)
+
+        def plate(x0, x1, n, noise):
+            P = np.c_[rng.uniform(x0, x1, n), rng.uniform(0, 50, n), np.zeros(n)]
+            P[:, 2] += rng.normal(0, noise, n)
+            return P
+        for na, nb, want in ((0.5, 0.05, 'b'), (0.05, 0.5, 'a')):
+            A, B = plate(0, 60, 60_000, na), plate(40, 100, 60_000, nb)
+            pb = os.path.join(TMP, 'unir_ruido_b.ply')
+            write_ply(pb, B)
+            info = {'units': 'mm', 'factor': 1.0, 'n_main': len(A)}
+            xyz, _, _ = unir.merge(A, None, None, info, [dict(path=pb, units='igual', M=unir.IDENTITY)])
+            mid = (xyz[:, 0] > 43) & (xyz[:, 0] < 57)
+            noise = float(np.std(xyz[mid, 2]))
+            self.assertLess(noise, 0.15 if want == 'b' else 0.1)               # la de menos ruido
+            self.assertLess(mid.sum(), 1.3 * 60_000 * 14 / 60)                 # sin doble piel
+            self.assertEqual(info['n_main'], int((xyz[:info['n_main'], 0] < 60.001).sum()))
+
     @staticmethod
     def _rot(seed):
         rng = np.random.default_rng(seed)

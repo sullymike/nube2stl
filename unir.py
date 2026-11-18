@@ -131,12 +131,29 @@ def merge(xyz, rgb, nrm, info, entries, main_path=None, log=lambda s: None):
             if fit is not None:
                 brgb = apply_color(brgb, fit)
                 log('  ' + color_text(fit))
+        drop_a = None
+        if e.get('best', True) and (~keep).sum() >= 100:   # donde la añadida se ve mejor, se queda ella
+            better, drop_a, drop_b = best_seen(xyz, b, max(sp, spacing(b)))
+            keep &= ~drop_b
+            if better.any():
+                n1, n2 = (f'{x:,}'.replace(',', '.') for x in (int(better.sum()), int(drop_a.sum())))
+                log(f'  zona común: en parte se quedan los puntos de la añadida, que tienen menos ruido '
+                    f'({n1} suyos; {n2} de la principal fuera)')
+                keep |= better
+            else:
+                drop_a = None
         if not keep.all():
             log(f'  zona común: se quitan {(~keep).sum():,} puntos repetidos de la nube añadida '
                 f'({100 * (~keep).mean():.0f} %)')
         b = b[keep]
         brgb = brgb[keep] if brgb is not None else None
         bnrm = bnrm[keep] if bnrm is not None else None
+        if drop_a is not None:
+            if 'n_main' in info:                          # los primeros n_main puntos son los de la principal
+                info['n_main'] -= int(drop_a[:info['n_main']].sum())
+            xyz = xyz[~drop_a]
+            rgb = rgb[~drop_a] if rgb is not None else None
+            nrm = nrm[~drop_a] if nrm is not None else None
         if rgb is not None or brgb is not None:
             gray = lambda n: np.full((n, 3), 160, np.uint8)                         # noqa: E731
             rgb = np.concatenate([rgb if rgb is not None else gray(len(xyz)), brgb if brgb is not None else gray(len(b))])
@@ -144,6 +161,96 @@ def merge(xyz, rgb, nrm, info, entries, main_path=None, log=lambda s: None):
         xyz = np.concatenate([xyz, b])
         log(f'  {len(b):,} puntos añadidos; en total {len(xyz):,}')
     return xyz, rgb, nrm
+
+
+def _cell_noise(P, key, ncell, min_pts=8):
+    """Ruido de cada celda: desviación típica de sus puntos respecto a su plano (raíz del menor autovalor de la
+    covarianza). NaN en las celdas con menos de min_pts puntos."""
+    n = np.bincount(key, minlength=ncell).astype(np.float64)
+    Q = P - P.mean(0)
+    m = np.stack([np.bincount(key, Q[:, a], ncell) for a in range(3)], 1) / np.maximum(n, 1)[:, None]
+    C = np.empty((ncell, 3, 3))
+    for a in range(3):
+        for b in range(a, 3):
+            C[:, a, b] = C[:, b, a] = np.bincount(key, Q[:, a] * Q[:, b], ncell) / np.maximum(n, 1) - m[:, a] * m[:, b]
+    out = np.full(ncell, np.nan)
+    ok = n >= min_pts
+    out[ok] = np.sqrt(np.clip(np.linalg.eigvalsh(C[ok])[:, 0], 0, None))
+    return out
+
+
+def best_seen(A, B, sp, ratio=0.6):
+    """En la zona común, ¿qué nube se ve mejor? Por cubitos de 20 separaciones (unos 100 puntos) que las dos llenan (al menos la mitad
+    de los puntos de un cubito típico de cada una, para no dejar huecos en el borde), la de menos ruido: la
+    desviación de sus puntos respecto al plano del cubito. -> (máscara de B que se queda, máscara de A que se
+    quita, máscara de B que se quita aunque merge no la vea en la zona común): la añadida gana donde su ruido es menos de ratio veces el de la principal; ahí se quedan todos sus
+    puntos y se quitan los de la principal que estén sobre ellos: a menos de 2 separaciones a lo largo de la
+    superficie y de 4 veces su ruido a lo largo de la normal (con ruido, la prueba de punto a punto no ve la zona
+    común)."""
+    keep_b = np.zeros(len(B), bool)
+    drop_a = np.zeros(len(A), bool)
+    # el cubito tiene que ser mayor que el ruido: si no, una nube ruidosa se reparte en capas de cubitos y en cada
+    # una parece plana. Primero el ruido con cubitos grandes (la curvatura cuenta igual en las dos nubes).
+    big = 40 * sp
+    lo = np.maximum(A.min(0), B.min(0)) - big
+    hi = np.minimum(A.max(0), B.max(0)) + big
+    ia = np.flatnonzero(((A >= lo) & (A <= hi)).all(1))
+    ib = np.flatnonzero(((B >= lo) & (B <= hi)).all(1))
+    if len(ia) < 8 or len(ib) < 8:
+        return keep_b, drop_a, np.zeros(len(B), bool)
+    noise = []
+    for P, idx in ((A, ia), (B, ib)):
+        k = np.unique(np.floor((P[idx] - lo) / big).astype(np.int64), axis=0, return_inverse=True)[1].ravel()
+        nz = _cell_noise(P[idx].astype(np.float64), k, int(k.max()) + 1, min_pts=30)
+        noise.append(np.nanmedian(nz) if np.isfinite(nz).any() else 0.0)
+    g = max(20 * sp, 3 * max(noise))
+    ka = np.floor((A[ia] - lo) / g).astype(np.int64)
+    kb = np.floor((B[ib] - lo) / g).astype(np.int64)
+    uk, inv = np.unique(np.r_[ka, kb], axis=0, return_inverse=True)
+    inv = inv.ravel()
+    ca, cb = inv[:len(ia)], inv[len(ia):]
+    cnt_a = np.bincount(ca, minlength=len(uk))
+    cnt_b = np.bincount(cb, minlength=len(uk))
+    full = (cnt_a >= max(30, 0.5 * np.median(cnt_a[cnt_a > 0]))) & (cnt_b >= max(30, 0.5 * np.median(cnt_b[cnt_b > 0])))
+    na = _cell_noise(A[ia].astype(np.float64), ca, len(uk), 30)
+    nb = _cell_noise(B[ib].astype(np.float64), cb, len(uk), 30)
+    win = full & np.isfinite(na) & np.isfinite(nb) & (nb < ratio * na)
+    keep_b[ib[win[cb]]] = True
+    drop_a[ia] = _lying_on(A[ia], B[keep_b], sp, max(noise))
+    # donde no gana la añadida, fuera los puntos suyos que caen sobre la principal (con ruido, la prueba de punto a
+    # punto de merge no los ve todos y quedaría doble piel)
+    rest_b = np.zeros(len(B), bool)
+    rest_b[ib] = True
+    rest_b &= ~keep_b
+    drop_b = np.zeros(len(B), bool)
+    if rest_b.any():
+        drop_b[rest_b] = _lying_on(B[rest_b], A[~drop_a], sp, max(noise))
+    return keep_b, drop_a, drop_b
+
+
+def _lying_on(X, Y, sp, noise):
+    """Puntos de X que están sobre la superficie de Y: su punto más cercano de Y a menos de 2 separaciones a lo
+    largo de la superficie y de 4 veces el ruido (medido ahí, X frente a Y) a lo largo de la normal."""
+    out = np.zeros(len(X), bool)
+    if len(Y) < 20 or not len(X):
+        return out
+    from scipy.spatial import cKDTree
+    X = np.asarray(X, np.float64)
+    Y = np.asarray(Y, np.float64)
+    tree = cKDTree(Y)
+    d, j = tree.query(X, distance_upper_bound=max(2 * sp, 10 * noise), workers=-1)
+    ok = np.flatnonzero(np.isfinite(d))
+    if not len(ok):
+        return out
+    nrm = _normals_at(tree, Y, j[ok])
+    v = X[ok] - Y[j[ok]]
+    dn = np.abs(np.einsum('ij,ij->i', v, nrm))                      # a lo largo de la normal (el ruido)
+    dt = np.sqrt(np.clip((v * v).sum(1) - dn * dn, 0, None))        # a lo largo de la superficie
+    on = dt < 2 * sp
+    if on.any():
+        sigma = 1.4826 * float(np.median(dn[on]))
+        out[ok[on & (dn < max(2 * sp, 4 * sigma))]] = True
+    return out
 
 
 def color_match(a, b, min_pairs=500):
