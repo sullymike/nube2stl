@@ -598,6 +598,30 @@ punto del escaneo nuevo se mide la distancia con signo a la superficie del antig
 la comparación, que también se da: por debajo de él no hay cambio real) y los máximos. Se puede guardar un
 <b>informe PDF</b> (planta coloreada, histograma y resumen) y la nube coloreada (PLY). Desde la consola:
 <code>python3 comparar.py antes.ply despues.ply informe.pdf</code>.</p>
+<p>Qué es «fuera» lo decide el lado desde el que se mira la pieza (pestaña <i>Orientación</i>, con <i>Mirar desde</i>
+y <i>Darle la vuelta</i>); en un objeto entero, hacia fuera del centro. Si los colores salen al revés (una costra
+azul, un desconchado rojo), la cara se está mirando desde detrás: dale la vuelta y compara otra vez. Si el afinado
+mueve mucho el escaneo, el registro lo avisa: en una pieza casi lisa, sin forma a la que agarrarse, puede deslizarse
+sobre sí misma.</p>
+<h4 id="serie">Varias fechas (serie)</h4>
+<p>Con el escaneo más antiguo abierto, <b>Archivo › Comparar varias fechas (serie)…</b> pide los de las fechas
+siguientes (se eligen todos a la vez; se ordenan por la fecha del nombre). Cada uno se alinea en la ventana de unir
+<b>con el primero</b>, no con el anterior, para que los errores de alineación no se sumen, y después se ponen las
+fechas: salen del nombre del fichero (<code>lapida_2019-05-21.ply</code>, <code>escaneo 2021.ply</code>) o, si no la
+lleva, de la fecha del fichero, y se pueden corregir. Se mide:</p>
+<ul>
+  <li><b>cada fecha frente a la primera</b>, como al comparar dos, con <b>el mismo umbral</b> para todas (el mayor de
+      los automáticos), para que sus cifras se puedan comparar;</li>
+  <li><b>la evolución en los mismos lugares</b>: 60.000 puntos del primer escaneo; en cada fecha, cuánto se ha movido
+      allí la superficie;</li>
+  <li><b>el ritmo</b> de cada lugar en mm/año (la recta que mejor sigue su evolución desde la primera fecha).</li>
+</ul>
+<p>La ventana deja ver cada fecha o el ritmo, con la misma escala de color. El <b>informe PDF</b> trae la gráfica de
+la parte perdida y ganada en cada fecha, la evolución de los lugares (la mediana, el 90 % y el lugar que más ha
+perdido), un mapa por fecha y el mapa del ritmo. En la prueba (una placa con una zona que se hunde 0,5 mm al año
+entre 2015 y 2024 y una costra que aparece en 2021) da −1,5, −3 y −4,5 mm en la zona y un ritmo de −0,50 mm/año, y 0 en
+el resto. Desde la consola: <code>python3 comparar.py 2015.ply 2018.ply 2021.ply 2024.ply informe.pdf
+--fechas 2015,2018,2021,2024</code>.</p>
 
 <h3 id="lidar">LiDAR aéreo por clases (LAS/LAZ)</h3>
 <p>Los LAS del PNOA y de casi todos los vuelos traen la <b>clase</b> de cada punto (suelo, vegetación, edificios,

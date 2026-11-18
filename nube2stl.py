@@ -2211,6 +2211,7 @@ class MainWindow(QMainWindow):
                                   ('savecloud', 'Guardar la nube unida…', self.save_merged, None),
                                   ('reverse', 'Añadir el reverso (pieza de dos caras)…', self.add_reverse, None),
                                   ('compare', 'Comparar con otro escaneo (deterioro)…', self.compare_scan, None),
+                                  ('compare_series', 'Comparar varias fechas (serie)…', self.compare_series, None),
                                   ('wizard', 'Asistente…', self.open_wizard, 'Ctrl+W'),
                                   ('save', 'Guardar malla…', self.save_mesh, 'Ctrl+S'),
                                   ('pdf', 'Ficha PDF de la pieza…', self.save_pdf, None),
@@ -3061,6 +3062,162 @@ class MainWindow(QMainWindow):
                 ejemplos.write_ply(p, Bm, comparar.colors(d, lim))
                 self.say(f'Nube coloreada: {p}')
         for text, fn in (('Guardar informe PDF…', save_pdf), ('Guardar nube coloreada (PLY)…', save_ply)):
+            b = QPushButton(text)
+            b.clicked.connect(fn)
+            row.addWidget(b)
+        row.addStretch(1)
+        close = QPushButton('Cerrar')
+        close.clicked.connect(dlg.accept)
+        row.addWidget(close)
+        v.addLayout(row)
+        dlg.exec_()
+
+    def compare_series(self):
+        """Serie de escaneos: el abierto es el primero (la referencia); se eligen los siguientes, se alinea cada uno
+        (ventana de unir), se ponen las fechas y se mide cada uno frente al primero (comparar.series)."""
+        import comparar
+        import entrada
+        import ventana_unir
+        if self.busy() or getattr(self, 'xyz_all', None) is None:
+            self.say('Abre primero el escaneo más antiguo; después elige los de las demás fechas.')
+            return
+        paths, _ = QFileDialog.getOpenFileNames(self, 'Escaneos de las fechas siguientes (puedes elegir varios)',
+                                                os.path.dirname(self.path), entrada.OPEN_FILTER)
+        paths = [p for p in paths if os.path.abspath(p) != os.path.abspath(self.path)]
+        if not paths:
+            return
+        paths.sort(key=lambda p: comparar.date_of(p)[0])
+        entries = []
+        for i, path in enumerate(paths):
+            try:
+                dlg = ventana_unir.MergeDialog(self, path, C, ok_text='Siguiente' if i < len(paths) - 1 else 'Comparar',
+                                               title=f'Fecha {i + 2} de {len(paths) + 1}: alinear '
+                                                     f'{os.path.basename(path)} con el primero')
+            except Exception as e:
+                traceback.print_exc()
+                self.on_fail(f'No se pudo leer {os.path.basename(path)}: {e}')
+                return
+            if not (dlg.exec_() and dlg.result_entry):
+                return
+            entries.append(dlg.result_entry)
+        all_paths = [self.path] + paths
+        dates = self._ask_dates(all_paths)
+        if dates is None:
+            return
+        A, prm, info = self.xyz, self.params(), self.load_info
+        labels = [d[1] for d in dates]
+
+        def task(log):
+            import unir
+            Bs = [unir.read_extra(e['path'], e['units'], info, log)[0] for e in entries]
+            out = comparar.outward_of(A, prm)
+            res = comparar.series(A, Bs, [e['M'] for e in entries], out, dates=[d[0] for d in dates], log=log)
+            res['outward'] = out
+            return res
+        self.say(f'--- Serie de {len(all_paths)} escaneos: ' + ' → '.join(labels))
+        self.start(task, (), lambda res: self._series_done(res, all_paths, labels))
+
+    def _ask_dates(self, paths):
+        """Fechas de los escaneos (del nombre del fichero o de su fecha; se pueden corregir). -> [(años, texto)]"""
+        import comparar
+        from PyQt5.QtWidgets import QDialogButtonBox, QFormLayout, QLineEdit
+        dlg = QDialog(self)
+        dlg.setWindowTitle('Fechas de los escaneos')
+        v = QVBoxLayout(dlg)
+        lab = QLabel('Fecha de cada escaneo (2019, 2019-05, 2019-05-21 o 21/05/2019). Sale del nombre del fichero o, si '
+                     'no la lleva, de la fecha del fichero: corrígela si no es la del escaneo. Con ellas se calcula el '
+                     'ritmo de cambio en mm/año.')
+        lab.setWordWrap(True)
+        v.addWidget(lab)
+        form = QFormLayout()
+        edits = []
+        for p in paths:
+            e = QLineEdit(comparar.date_of(p)[1])
+            form.addRow(os.path.basename(p), e)
+            edits.append(e)
+        v.addLayout(form)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        v.addWidget(bb)
+        while dlg.exec_():
+            vals = [comparar.parse_date(e.text()) for e in edits]
+            if None not in vals and all(b > a for a, b in zip(vals, vals[1:])):
+                return [(x, e.text().strip()) for x, e in zip(vals, edits)]
+            QMessageBox.warning(dlg, 'Fechas', 'Pon una fecha válida en cada escaneo, de la más antigua (la abierta) a '
+                                'la más reciente.')
+        return None
+
+    def _series_done(self, res, paths, labels):
+        import comparar
+        import visor
+        names = [os.path.basename(p) for p in paths]
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f'Serie de {len(paths)} escaneos: ' + ' → '.join(labels))
+        dlg.resize(1150, 800)
+        v = QVBoxLayout(dlg)
+        top = QHBoxLayout()
+        top.addWidget(QLabel('Ver:'))
+        pick = QComboBox()
+        items = [f'{labels[i + 1]} frente a {labels[0]}' for i in range(len(res['steps']))]
+        items.append('ritmo (mm/año) en los lugares del primero' if res['rate'] is not None else
+                     'cambio total en los lugares del primero')
+        pick.addItems(items)
+        top.addWidget(pick)
+        top.addStretch(1)
+        v.addLayout(top)
+        view = visor.Viewer3D(C['view'], 'nube', C)
+        view.hide_marks()
+        v.addWidget(view, 1)
+        cap = QLabel('')
+        cap.setWordWrap(True)
+        v.addWidget(cap)
+        lab = QLabel(comparar.series_text(res, labels).replace('\n', '<br>'))
+        lab.setWordWrap(True)
+        v.addWidget(lab)
+        steps = res['steps']
+        lim = max([max(abs(st['s'].get('p1', -1)), abs(st['s'].get('p99', 1))) for st in steps if st['s']]
+                  + [2 * res['thr']])
+        c0 = np.asarray(res['ref'], np.float64).mean(0)
+
+        def show(i, home=False):
+            if i < len(steps):
+                P, d, l_, unit = steps[i]['Bm'], steps[i]['d'], lim, 'mm'
+            elif res['rate'] is not None:
+                P, d, unit = res['ref'], res['rate'], 'mm/año'
+                l_ = max(float(np.nanpercentile(np.abs(d), 98)) if np.isfinite(d).any() else 0.1, 1e-3)
+            else:
+                P, d, l_, unit = res['ref'], res['change'][:, -1], lim, 'mm'
+            k = max(1, len(P) // PREVIEW_PTS)
+            Q = (np.asarray(P[::k], np.float64) - c0).astype(np.float32)
+            view.show_cloud(Q, comparar.colors(d[::k], l_) / 255.0, None, home)
+            cap.setText(f'<b>Azul</b>: pérdida · <b>rojo</b>: material de más · <b>gris</b>: sin datos · escala '
+                        f'±{l_:.2g} {unit} (la misma en todas las fechas)')
+        pick.currentIndexChanged.connect(lambda i: show(i))
+        show(0, True)
+        row = QHBoxLayout()
+        base = os.path.splitext(paths[-1])[0]
+
+        def save_pdf():
+            p, _ = QFileDialog.getSaveFileName(dlg, 'Informe de la serie', base + '_serie.pdf', 'PDF (*.pdf)')
+            if p:
+                comparar.report_series_pdf(p, res, names, labels, res.get('outward'))
+                self.say(f'Informe de la serie: {p}')
+
+        def save_ply():
+            import ejemplos
+            i = pick.currentIndex()
+            p, _ = QFileDialog.getSaveFileName(dlg, 'Nube coloreada', base + '_serie.ply', 'PLY (*.ply)')
+            if not p:
+                return
+            if i < len(steps):
+                ejemplos.write_ply(p, steps[i]['Bm'], comparar.colors(steps[i]['d'], lim))
+            else:
+                d = res['rate'] if res['rate'] is not None else res['change'][:, -1]
+                l_ = max(float(np.nanpercentile(np.abs(d), 98)) if np.isfinite(d).any() else 0.1, 1e-3)
+                ejemplos.write_ply(p, res['ref'], comparar.colors(d, l_ if res['rate'] is not None else lim))
+            self.say(f'Nube coloreada: {p}')
+        for text, fn in (('Guardar informe PDF…', save_pdf), ('Guardar la vista como nube coloreada (PLY)…', save_ply)):
             b = QPushButton(text)
             b.clicked.connect(fn)
             row.addWidget(b)

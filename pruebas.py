@@ -909,6 +909,42 @@ class Novedades(unittest.TestCase):
         self.assertLess(float(np.abs(np.nanmedian(d[~lost & ~crust]))), 0.05)
         self.assertLess(float(np.isnan(d).mean()), 0.02)                # casi todo tiene escaneo antiguo debajo
 
+    def test_comparar_varias_fechas(self):
+        """Serie de cuatro escaneos (2015, 2018, 2021, 2024) de una placa: una zona se va hundiendo 0,5 mm/año (0, 1,5,
+        3 y 4,5 mm) y una costra aparece en 2021 (+1 mm). Cada fecha frente a la primera; el mismo umbral para todas;
+        en los mismos lugares, la evolución, y el ritmo: −0,5 mm/año en la zona que se pierde, 0 en el resto. Más el
+        informe PDF y la fecha sacada del nombre del fichero."""
+        import comparar
+        rng = np.random.default_rng(6)
+
+        def scan(t):
+            P = np.c_[rng.uniform(0, 300, 120_000), rng.uniform(0, 200, 120_000), rng.normal(0, 0.05, 120_000)]
+            P[:, 2] += 3 * np.sin(P[:, 0] / 23) * np.cos(P[:, 1] / 17)  # forma: lisa, se deslizaría sobre sí misma
+            P[np.hypot(P[:, 0] - 80, P[:, 1] - 100) < 40, 2] -= 0.5 * t
+            if t >= 6:
+                P[np.hypot(P[:, 0] - 220, P[:, 1] - 100) < 30, 2] += 1.0
+            return P
+        years = [2015, 2018, 2021, 2024]
+        A, *Bs = [scan(y - 2015) for y in years]
+        res = comparar.series(A, Bs, outward=np.array([0, 0, 1.0]), dates=years)
+        loss = [st['s']['loss_pct'] for st in res['steps']]
+        self.assertTrue(loss[0] < loss[1] + 0.5 and all(x > 7 for x in loss))       # la zona: 8 % de la placa
+        self.assertLess(res['steps'][0]['s']['gain_pct'], 0.5)
+        self.assertGreater(res['steps'][2]['s']['gain_pct'], 3)                     # la costra, desde 2021
+        ref, ch = res['ref'], res['change']
+        zone = np.hypot(ref[:, 0] - 80, ref[:, 1] - 100) < 35
+        calm = (np.hypot(ref[:, 0] - 80, ref[:, 1] - 100) > 45) & (np.hypot(ref[:, 0] - 220, ref[:, 1] - 100) > 35)
+        self.assertTrue(np.allclose(np.nanmedian(ch[zone], 0), [0, -1.5, -3, -4.5], atol=0.15))
+        self.assertAlmostEqual(float(np.nanmedian(res['rate'][zone])), -0.5, delta=0.03)
+        self.assertLess(abs(float(np.nanmedian(res['rate'][calm]))), 0.01)
+        pdf = os.path.join(TMP, 'serie.pdf')
+        comparar.report_series_pdf(pdf, res, [f'placa_{y}.ply' for y in years], [str(y) for y in years],
+                                   outward=np.array([0, 0, 1.0]))
+        self.assertGreater(os.path.getsize(pdf), 20_000)
+        self.assertEqual(comparar.date_of('/x/lapida_2019-05-21.ply')[1], '2019-05-21')
+        self.assertEqual(comparar.date_of('/x/escaneo 2021.ply')[1], '2021')
+        self.assertAlmostEqual(comparar.parse_date('21/05/2019'), comparar.parse_date('2019-05-21'))
+
     def test_interior(self):
         import interior
         P = ejemplos.cisterna(120_000)[0]

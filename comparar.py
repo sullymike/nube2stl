@@ -8,7 +8,11 @@
 3. Resumen (qué parte de la superficie ha perdido más de un umbral, la mayor pérdida…) e informe PDF con la vista
    en planta coloreada y el histograma.
 
-Desde la consola: python3 comparar.py antes.ply despues.ply informe.pdf [--alinear auto] [--umbral 0.5]
+Varias fechas (serie): cada escaneo se compara con el primero (la referencia), con el mismo umbral, y además se
+sigue el cambio en los mismos lugares (puntos del primero) para ver la evolución y, con fechas, el ritmo en mm/año.
+
+Desde la consola: python3 comparar.py antes.ply despues.ply [otro.ply…] informe.pdf [--alinear auto] [--umbral 0.5]
+[--fechas 2015,2019,2024]
 """
 import datetime
 import os
@@ -58,6 +62,13 @@ def robust_refine(A, B, M0, log=lambda s: None):
         M = np.asarray(r.transformation)
     log(f'Afinado robusto (sin las zonas que han cambiado): {100 * r.fitness:.0f} % de los puntos con pareja, '
         f'separación {r.inlier_rmse:.2f} mm')
+    M0 = np.asarray(M0, np.float64).reshape(4, 4)
+    c = np.asarray(B, np.float64)[:: max(1, len(B) // 20000)]
+    moved = np.linalg.norm((c @ M[:3, :3].T + M[:3, 3]) - (c @ M0[:3, :3].T + M0[:3, 3]), axis=1).max()
+    if moved > 10 * v:
+        log(f'AVISO: el afinado ha movido el escaneo hasta {moved:.1f} mm respecto a la alineación de partida. Si la '
+            f'pieza es casi lisa (sin forma que agarre), puede haberse deslizado sobre sí misma: compruébalo en la '
+            f'vista (los bordes deben coincidir)')
     return M
 
 
@@ -189,34 +200,250 @@ def compare(A, B, M=None, outward=None, thr=None, log=lambda s: None):
     return Bm, d, s, M
 
 
+REF_PTS = 60_000          # lugares de la referencia en los que se sigue la evolución
+
+
+def series(A, Bs, Ms=None, outward=None, thr=None, dates=None, log=lambda s: None):
+    """Serie de escaneos de la misma pieza: A, el primero (la referencia), y Bs, los siguientes por orden. Cada uno se
+    alinea con la referencia (no con el anterior, para no acumular errores) y se mide como en compare. El umbral es
+    común (el mayor de los automáticos), para que las cifras de cada fecha se puedan comparar.
+    También se sigue el cambio en los mismos lugares: REF_PTS puntos de A; en cada fecha, cuánto se ha movido la
+    superficie allí (< 0 pérdida). Con fechas (años, con decimales), el ritmo de cada lugar en mm/año (recta por
+    mínimos cuadrados, desde la referencia = 0).
+    -> dict(steps=[dict(Bm, d, s, M)], ref=puntos de A, change=(lugares × fechas, NaN sin datos; la referencia
+       incluida, 0), rate=(lugares,) o None, thr, dates)"""
+    Ms = list(Ms) if Ms is not None else [None] * len(Bs)
+    steps = []
+    for i, (B, M) in enumerate(zip(Bs, Ms)):
+        log(f'--- Fecha {i + 2} de {len(Bs) + 1}')
+        Bm, d, s, M = compare(A, B, M, outward, thr, log)
+        steps.append(dict(Bm=Bm, d=d, s=s, M=M))
+    if thr is None:
+        thr = max(default_threshold(st['d']) for st in steps)
+    for st in steps:
+        st['s'] = summary(st['d'], thr)
+    A = np.asarray(A, np.float64)
+    ref = A[np.random.default_rng(0).choice(len(A), min(REF_PTS, len(A)), replace=False)]
+    change = np.zeros((len(ref), len(Bs) + 1), np.float32)
+    for i, st in enumerate(steps):          # A frente a la superficie de esa fecha: + si A queda fuera (se perdió)
+        change[:, i + 1] = -signed_distances(st['Bm'], ref, outward)
+    rate = None
+    if dates is not None and len(dates) == len(Bs) + 1:
+        t = np.asarray(dates, np.float64) - float(dates[0])
+        if np.ptp(t) > 0:
+            ok = np.isfinite(change)
+            tt = np.where(ok, t, 0.0)
+            n = ok.sum(1)
+            st_ = (tt * np.nan_to_num(change)).sum(1)
+            t2 = (tt * tt).sum(1)
+            rate = np.where((n >= 2) & (t2 > 0), st_ / np.maximum(t2, 1e-12), np.nan).astype(np.float32)
+    log('Serie: ' + ' · '.join(f'{i + 2}: pérdida {st["s"].get("loss_pct", 0):.1f} %' for i, st in enumerate(steps)))
+    return dict(steps=steps, ref=ref.astype(np.float32), change=change, rate=rate, thr=thr,
+                dates=list(dates) if dates is not None else None)
+
+
+def date_of(path):
+    """Fecha de un escaneo en años con decimales: del nombre (2019, 2019-05, 2019-05-21, 20190521) o, si no, de
+    la fecha del fichero. -> (años, texto)"""
+    import re
+    name = os.path.basename(path)
+    m = re.search(r'(?<!\d)((?:19|20)\d\d)[-_.]?(0[1-9]|1[0-2])?[-_.]?(0[1-9]|[12]\d|3[01])?(?!\d)', name)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0)
+        txt = f'{y}' + (f'-{mo:02d}' if mo else '') + (f'-{d:02d}' if d else '')
+        return y + ((mo or 1) - 1) / 12 + ((d or 1) - 1) / 365.25, txt
+    t = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+    return t.year + (t.timetuple().tm_yday - 1) / 365.25, t.strftime('%Y-%m-%d')
+
+
+def parse_date(txt):
+    """«2019», «2019-05», «2019-05-21», «21/05/2019» o «2019,4» -> años con decimales, o None."""
+    import re
+    txt = txt.strip().replace(',', '.')
+    m = re.fullmatch(r'(\d{1,2})/(\d{1,2})/(\d{4})', txt)
+    if m:
+        return int(m.group(3)) + (int(m.group(2)) - 1) / 12 + (int(m.group(1)) - 1) / 365.25
+    m = re.fullmatch(r'(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?', txt)
+    if m:
+        return int(m.group(1)) + (int(m.group(2) or 1) - 1) / 12 + (int(m.group(3) or 1) - 1) / 365.25
+    try:
+        return float(txt)
+    except ValueError:
+        return None
+
+
+def series_text(res, names):
+    """Tabla de la serie en texto (una línea por fecha)."""
+    rows = []
+    for i, st in enumerate(res['steps']):
+        s = st['s']
+        if not s:
+            rows.append(f'{names[i + 1]}: no se solapa con la referencia')
+            continue
+        rows.append(f'{names[i + 1]}: pérdida {s["loss_pct"]:.1f} % (máx. {s["max_loss"]:.1f} mm) · material de más '
+                    f'{s["gain_pct"]:.1f} % · mediana {s["median"]:+.2f} mm · ruido {s["noise"]:.2f} mm')
+    if res.get('rate') is not None:
+        r = res['rate'][np.isfinite(res['rate'])]
+        if len(r):
+            rows.append(f'Ritmo en los lugares que pierden: el 5 % que más, {-np.percentile(r, 5):.2f} mm/año o más; '
+                        f'mediana de toda la superficie {np.median(r):+.3f} mm/año')
+    return '\n'.join(rows)
+
+
+def report_series_pdf(path, res, names, labels=None, outward=None, notes=''):
+    """Informe de una serie: tabla y gráfica de la evolución, un mapa por fecha (misma escala) y el ritmo o el
+    cambio total sobre la referencia."""
+    import textwrap
+    from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+    from matplotlib.figure import Figure
+    from superficie import _basis
+    from version import __version__
+    steps, ref = res['steps'], np.asarray(res['ref'], np.float64)
+    labels = labels or names
+    if outward is None:
+        _, _, vt = np.linalg.svd(ref - ref.mean(0), full_matrices=False)
+        outward = vt[2] if vt[2][2] >= 0 else -vt[2]
+    n, e1, e2 = _basis(outward)
+    c0 = ref.mean(0)
+    cmap = LinearSegmentedColormap.from_list('dif', ['#285ac8', '#eeeee8', '#d23228'])
+    lim = max([max(abs(st['s'].get('p1', -1)), abs(st['s'].get('p99', 1))) for st in steps if st['s']] + [2 * res['thr']])
+    x = res['dates'] if res.get('dates') else list(range(len(names)))
+
+    def head(fig, title):
+        fig.text(0.06, 0.965, title, fontsize=17, weight='bold', va='top', color='#1f3a5f')
+        fig.text(0.06, 0.935, '  →  '.join(labels), fontsize=9.5, va='top', color='#b5651d')
+        fig.text(0.94, 0.965, f'nube2stl {__version__}', fontsize=8, ha='right', va='top', color='#777')
+        fig.text(0.94, 0.950, datetime.datetime.now().strftime('%d/%m/%Y %H:%M'), fontsize=8, ha='right', va='top',
+                 color='#777')
+
+    def plan(ax, P, val, lim_, title):
+        P = np.asarray(P, np.float64) - c0
+        X, Y, Z = P @ e1, P @ e2, P @ n
+        k = max(1, len(P) // 250_000)
+        o = np.argsort(Z[::k])
+        xs, ys, vs = X[::k][o], Y[::k][o], val[::k][o]
+        ok = np.isfinite(vs)
+        ax.scatter(xs[~ok], ys[~ok], s=0.2, c='#bbbbbb', linewidths=0, rasterized=True)
+        sc = ax.scatter(xs[ok], ys[ok], s=0.2, c=vs[ok], cmap=cmap, norm=TwoSlopeNorm(0, -lim_, lim_), linewidths=0,
+                        rasterized=True)
+        ax.set_aspect('equal')
+        ax.set_title(title, fontsize=8.5)
+        ax.tick_params(labelsize=6)
+        return sc
+
+    with PdfPages(path) as pdf:
+        fig = Figure(figsize=(8.27, 11.69))
+        head(fig, f'Serie de {len(names)} escaneos')
+        ax = fig.add_axes([0.10, 0.62, 0.80, 0.26])
+        loss = [0.0] + [st['s'].get('loss_pct', np.nan) for st in steps]
+        gain = [0.0] + [st['s'].get('gain_pct', np.nan) for st in steps]
+        ax.plot(x, loss, 'o-', color='#285ac8', label=f'pérdida de más de {res["thr"]:g} mm (% de la superficie)')
+        ax.plot(x, gain, 's-', color='#d23228', label='material de más (%)')
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, fontsize=7, rotation=20)
+        ax.tick_params(labelsize=7)
+        ax.legend(fontsize=7.5, loc='upper left')
+        ax.set_title('Evolución respecto a la primera fecha', fontsize=9)
+        ch = res['change']
+        a2 = fig.add_axes([0.10, 0.30, 0.80, 0.24])
+        q = [np.nanpercentile(ch[:, j], [5, 50, 95]) if np.isfinite(ch[:, j]).any() else [np.nan] * 3
+             for j in range(ch.shape[1])]
+        q = np.array(q)
+        a2.fill_between(x, q[:, 0], q[:, 2], color='#999', alpha=0.3, label='90 % de los lugares')
+        a2.plot(x, q[:, 1], 'k.-', label='mediana')
+        worst = np.nanargmin(np.nan_to_num(ch[:, -1], nan=np.inf)) if np.isfinite(ch[:, -1]).any() else None
+        if worst is not None:
+            a2.plot(x, ch[worst], '-', color='#285ac8', lw=1.2, label='el lugar que más ha perdido')
+        a2.axhline(0, color='#444', lw=0.6)
+        a2.set_xticks(x)
+        a2.set_xticklabels(labels, fontsize=7, rotation=20)
+        a2.tick_params(labelsize=7)
+        a2.set_ylabel('mm (< 0: pérdida)', fontsize=7.5)
+        a2.legend(fontsize=7, loc='lower left')
+        a2.set_title(f'Cambio de la superficie en los mismos {len(ref):,} lugares'.replace(',', '.'), fontsize=9)
+        lines = [w for row in series_text(res, labels).split('\n') for w in textwrap.wrap(row, 118)]
+        fig.text(0.06, 0.24, '\n'.join(lines), fontsize=7.8, va='top', linespacing=1.5)
+        if notes:
+            fig.text(0.06, 0.06, textwrap.fill(notes, 120), fontsize=7.5, va='top', color='#555')
+        pdf.savefig(fig)
+        per = 4
+        for p0 in range(0, len(steps), per):            # mapas, cuatro por página, con la misma escala
+            fig = Figure(figsize=(8.27, 11.69))
+            head(fig, 'Cada fecha frente a la primera')
+            sc = None
+            for j, st in enumerate(steps[p0:p0 + per]):
+                ax = fig.add_axes([0.06 + 0.45 * (j % 2), 0.50 - 0.42 * (j // 2), 0.40, 0.38])
+                sc = plan(ax, st['Bm'], st['d'], lim, f'{labels[p0 + j + 1]} (azul: pérdida · rojo: de más)')
+            if sc is not None:
+                cb = fig.colorbar(sc, cax=fig.add_axes([0.93, 0.30, 0.015, 0.40]))
+                cb.set_label('mm', fontsize=8)
+            pdf.savefig(fig)
+        fig = Figure(figsize=(8.27, 11.69))
+        rate = res.get('rate')
+        if rate is not None:
+            head(fig, 'Ritmo de cambio')
+            rl = max(float(np.nanpercentile(np.abs(rate), 98)) if np.isfinite(rate).any() else 0.1, 1e-3)
+            ax = fig.add_axes([0.06, 0.35, 0.80, 0.55])
+            sc = plan(ax, ref, rate, rl, 'mm/año en cada lugar (recta desde la primera fecha; azul: pierde)')
+        else:
+            head(fig, 'Cambio total')
+            ax = fig.add_axes([0.06, 0.35, 0.80, 0.55])
+            sc = plan(ax, ref, ch[:, -1], lim, f'{labels[-1]} frente a {labels[0]}, en los lugares de la primera')
+        cb = fig.colorbar(sc, cax=fig.add_axes([0.88, 0.40, 0.02, 0.40]))
+        cb.set_label('mm/año' if rate is not None else 'mm', fontsize=8)
+        pdf.savefig(fig)
+
+
 def main(argv):
     import argparse
     import entrada
     import relief
     import unir
-    ap = argparse.ArgumentParser(prog='comparar.py', description='Comparar dos escaneos de la misma pieza')
-    ap.add_argument('antes')
-    ap.add_argument('despues')
-    ap.add_argument('informe', help='informe PDF')
+    ap = argparse.ArgumentParser(prog='comparar.py', description='Comparar dos o más escaneos de la misma pieza')
+    ap.add_argument('escaneos', nargs='+', help='antes después [más fechas, por orden…] informe.pdf')
     ap.add_argument('--alinear', choices=['no', 'auto'], default='no',
                     help='no: ya comparten coordenadas (por defecto); auto: alineación automática (necesita forma '
                          'marcada; compruébala)')
     ap.add_argument('--umbral', type=float, help='mm a partir de los que se cuenta un cambio (por defecto, 3 veces el '
                                                  'ruido)')
     ap.add_argument('--unidades', default='auto')
-    ap.add_argument('--ply', help='guardar también el escaneo nuevo coloreado (PLY)')
+    ap.add_argument('--fechas', help='fechas de los escaneos, por orden y separadas por comas (2015,2019-05,2024); '
+                                     'por defecto, del nombre del fichero o de su fecha')
+    ap.add_argument('--ply', help='guardar también el escaneo nuevo coloreado (PLY; con varias fechas, el último)')
     a = ap.parse_args(argv)
+    if len(a.escaneos) < 3:
+        ap.error('hacen falta al menos dos escaneos y el informe PDF')
+    scans, informe = a.escaneos[:-1], a.escaneos[-1]
     prm = relief.Params(units=a.unidades)
-    A, *_ = entrada.load_points(a.antes, prm, print)
-    B, *_ = entrada.load_points(a.despues, prm, print)
-    M = None
-    if a.alinear == 'auto':
-        M, flag = unir.auto_align(A, B, print)
-        if flag:
-            print('AVISO: alineación dudosa (' + flag + '): compruébala, o alinea por puntos en la ventana')
-    Bm, d, s, M = compare(A, B, M, thr=a.umbral, log=print)
-    report_pdf(a.informe, Bm, d, s, (os.path.basename(a.antes), os.path.basename(a.despues)))
-    print(f'Informe: {a.informe}')
+    pts = [entrada.load_points(f, prm, print)[0] for f in scans]
+    A, Bs = pts[0], pts[1:]
+    Ms = []
+    for B in Bs:
+        M = None
+        if a.alinear == 'auto':
+            M, flag = unir.auto_align(A, B, print)
+            if flag:
+                print('AVISO: alineación dudosa (' + flag + '): compruébala, o alinea por puntos en la ventana')
+        Ms.append(M)
+    names = [os.path.basename(f) for f in scans]
+    if len(Bs) == 1:
+        Bm, d, s, M = compare(A, Bs[0], Ms[0], thr=a.umbral, log=print)
+        report_pdf(informe, Bm, d, s, tuple(names))
+    else:
+        if a.fechas:
+            dates = [parse_date(t) for t in a.fechas.split(',')]
+            if len(dates) != len(scans) or None in dates:
+                ap.error('--fechas: una fecha por escaneo, por orden (2015,2019-05,2024)')
+            labels = [t.strip() for t in a.fechas.split(',')]
+        else:
+            dl = [date_of(f) for f in scans]
+            dates, labels = [d[0] for d in dl], [d[1] for d in dl]
+        res = series(A, Bs, Ms, outward_of(A), a.umbral, dates, print)
+        print(series_text(res, labels))
+        report_series_pdf(informe, res, names, labels)
+        Bm, d, s = res['steps'][-1]['Bm'], res['steps'][-1]['d'], res['steps'][-1]['s']
+    print(f'Informe: {informe}')
     if a.ply:
         import ejemplos
         ejemplos.write_ply(a.ply, Bm, colors(d, max(abs(s['p1']), abs(s['p99']))) if s else None)

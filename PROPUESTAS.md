@@ -510,7 +510,16 @@ que el resto.
   normal a más de 60° de la de la cara y en el borde de la silueta de frente; cara con canto 0,2–0,3, lápida y roca 0,
   terreno 0 aunque tiene el 29 % de puntos inclinados). Ventana «Reverso o unir» con «Unir las nubes» (abre la de
   unir, que ya elige «ya alineadas») o «Reverso igualmente». Prueba `Union.test_reverso_o_unir` (losa de dos caras).
-- Comparar más de dos fechas (serie temporal) en un mismo informe.
+- Comparar más de dos fechas (serie temporal) en un mismo informe. — *HECHO el 18-11-2026 (0.25.0)*:
+  `comparar.series` (cada fecha alineada con la primera, umbral común, evolución en 60.000 lugares de la primera con
+  `signed_distances` al revés, ritmo en mm/año por mínimos cuadrados desde la referencia), `date_of`/`parse_date`,
+  `report_series_pdf` (gráficas, un mapa por fecha a la misma escala, mapa del ritmo), Archivo › Comparar varias
+  fechas (ventana de unir para cada una, fechas corregibles, vista con selector) y `comparar.py a b c … informe.pdf
+  --fechas`. Prueba `Novedades.test_comparar_varias_fechas`: −1,5/−3/−4,5 mm y −0,50 mm/año. **Salió al probarlo**:
+  en una placa lisa el ICP robusto se desliza sobre sí misma (mapas girados unos grados y desplazados 10 mm, con las
+  cifras bien porque las distancias no cambian): ahora avisa si el afinado mueve el escaneo más de 10 vóxeles desde
+  la alineación de partida. Y en una pieza simétrica, qué es «fuera» lo decide «Mirar desde»: colores al revés →
+  darle la vuelta (en la ayuda).
 - «Mirar desde: auto» se equivoca de lado en una lápida con un marco alto y ancho (un listel de 6 mm en un
   cuarto de la superficie): el marco parece la cola de los laterales de un bloque. Lo resuelve «Darle la vuelta»;
   se podría distinguir una meseta (marco) de una cola repartida (laterales). — *HECHO el 18-11-2026 (0.25.0)*:

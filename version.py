@@ -26,6 +26,8 @@ HISTORY = [
         'Añadir el reverso: si las dos nubes se tocan o traen el canto, propone unirlas (sale la pieza real con su grosor)',
         '«Mirar desde: auto» ya no da la vuelta a las lápidas con marco o moldura (el ejemplo de la lápida salía del revés)',
         'Copia sin impresora: «Superficie abierta», solo lo escaneado, sin base ni paredes (para archivo, medir o modelar)',
+        'Comparar varias fechas (serie): cada una frente a la primera, evolución en los mismos lugares, ritmo en mm/año '
+        'e informe PDF; también en la consola (comparar.py a b c … informe.pdf --fechas)',
     ]),
     ('0.24.0', 'noviembre 2026', [
         'Zonas de detalle con pincel: botón propio «🖌 Zona de detalle» en la vista de la nube (antes estaba escondido '
