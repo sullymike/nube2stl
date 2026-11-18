@@ -24,6 +24,7 @@ HISTORY = [
         'para que no se note la costura entre dos tandas con distinta luz',
         'Unir nubes: en la zona común se queda la nube con menos ruido, y se quita mejor la doble piel',
         'Añadir el reverso: si las dos nubes se tocan o traen el canto, propone unirlas (sale la pieza real con su grosor)',
+        '«Mirar desde: auto» ya no da la vuelta a las lápidas con marco o moldura (el ejemplo de la lápida salía del revés)',
     ]),
     ('0.24.0', 'noviembre 2026', [
         'Zonas de detalle con pincel: botón propio «🖌 Zona de detalle» en la vista de la nube (antes estaba escondido '

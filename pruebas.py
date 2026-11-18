@@ -494,6 +494,29 @@ class Recorte(unittest.TestCase):
         self.assertTrue(np.array_equal(entrada.crop_mask(xyz, [dict(box, inside=False)]), ~ref))
         self.assertFalse(entrada.crop_mask(xyz, [box, dict(box, inside=False)]).any())
 
+    def test_mirar_desde_auto_con_marco(self):
+        """«Mirar desde: auto» con un marco alto: el marco es una cola de alturas como los laterales de un bloque, pero
+        es una meseta que mira de frente y rodea la pieza, así que está delante. Lápida de 200 × 140 con un listel de
+        6 mm de 8, 14 o 20 mm de ancho (18–43 % de la superficie) y letras incisas, inclinada 30°; y la lápida de
+        ejemplo (moldura de 3 mm), que antes se veía desde detrás. El bloque y la lápida gastada (cantos redondeados,
+        una rampa) siguen como antes."""
+        rng = np.random.default_rng(4)
+        a = np.radians(30)
+        R = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
+        front = R @ [0, 0, 1]
+        for w in (8, 14, 20):
+            x, y = rng.uniform(0, 200, 200_000), rng.uniform(0, 140, 200_000)
+            inner = (x > w) & (x < 200 - w) & (y > w) & (y < 140 - w)
+            z = np.where(inner, 0.0, 6.0)
+            z[inner & (np.sin(x / 3) > 0.6) & (((y > 40) & (y < 55)) | ((y > 80) & (y < 95)))] -= 2.0
+            P = (np.c_[x, y, z] + rng.normal(0, 0.05, (200_000, 3))) @ R.T + [500, 200, -40]
+            self.assertGreater(float(relief._frame_axes(P.astype(np.float32), relief.Params())[3] @ front), 0.9, w)
+        U, V, H, _ = relief._project(ejemplos.lapida()[0], relief.Params())
+        c = np.hypot(U - np.median(U), V - np.median(V))
+        self.assertGreater(np.median(H[c > np.percentile(c, 97)]), np.median(H[c < np.percentile(c, 30)]) + 2)
+        self.assertGreater(float(relief._frame_axes(ejemplos.bloque()[0], relief.Params())[3][2]), 0.9)
+        self.assertGreater(float(relief._frame_axes(ejemplos.gastada()[0], relief.Params())[3][2]), 0.9)
+
     def test_vistas(self):
         p = np.random.default_rng(1).normal(size=(5000, 3)).astype(np.float32)
         for view, n in relief.VIEWS.items():

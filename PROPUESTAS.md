@@ -506,4 +506,11 @@ que el resto.
 - Comparar más de dos fechas (serie temporal) en un mismo informe.
 - «Mirar desde: auto» se equivoca de lado en una lápida con un marco alto y ancho (un listel de 6 mm en un
   cuarto de la superficie): el marco parece la cola de los laterales de un bloque. Lo resuelve «Darle la vuelta»;
-  se podría distinguir una meseta (marco) de una cola repartida (laterales).
+  se podría distinguir una meseta (marco) de una cola repartida (laterales). — *HECHO el 18-11-2026 (0.25.0)*:
+  `relief._tail_faces_front`. La mitad exterior de la cola larga es un marco si (1) está junto al contorno (distancia
+  mediana al borde de la silueta < 0,4 la del resto: el fondo de unas letras incisas, que visto desde detrás es igual
+  que un marco, está dentro), (2) es una meseta (desviación de alturas < 10 % de la cola: la moldura de la lápida 8 %,
+  el canto redondeado de la gastada 15 %) y (3) mira de frente (más de la mitad de las normales a < 45°). Entonces el
+  frente es el lado de la cola. Prueba `Recorte.test_mirar_desde_auto_con_marco`: listel de 6 mm de 8, 14 y 20 mm
+  (18–43 % de la superficie), bien. **Sorpresa: la lápida de ejemplo (moldura de 3 mm) también se leía desde
+  detrás** (moldura hundida, letras en relieve) y nadie lo había notado; ahora sale bien. Los demás ejemplos, igual.

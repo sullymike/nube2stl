@@ -445,10 +445,15 @@ def _frame_axes(p, prm):
     s = p[:: max(1, len(p) // 200000)].astype(np.float64) - m
     _, _, vt = np.linalg.svd(s, full_matrices=False)
     u, v, n = vt
-    # las caras laterales/superiores del bloque forman una cola larga hacia atrás:
-    # el frente es el lado con la cola extrema más corta
-    lo, med, hi = np.percentile(s @ n, [0.5, 50, 99.5])
-    if hi - med > med - lo:
+    # las caras laterales/superiores del bloque forman una cola larga hacia atrás: el frente es el lado con la cola
+    # extrema más corta. Salvo que la cola sea una meseta que mira de frente (un marco alto, un listel): eso está
+    # delante. Se distinguen por las normales de los puntos de la cola: de lado en un bloque, de frente en un marco.
+    h = s @ n
+    lo, med, hi = np.percentile(h, [0.5, 50, 99.5])
+    long_hi = hi - med > med - lo
+    if _tail_faces_front(s, h, med, hi if long_hi else lo, n, u, v):
+        long_hi = not long_hi
+    if long_hi:
         n = -n
     plane = getattr(prm, 'plane', 'nube')
     pts = getattr(prm, 'plane_pts', None) or []
@@ -467,6 +472,42 @@ def _frame_axes(p, prm):
     if prm.mirror:
         u = -u
     return m, u, v, n
+
+
+def _tail_faces_front(s, h, med, end, n, u, v, m=4000):
+    """¿La cola larga de alturas (de med hacia end) es un marco: una meseta que mira de frente y rodea la pieza? Más
+    de la mitad de sus puntos (los de la mitad exterior de la cola) con la normal a menos de 45° de la de la cara, y
+    junto al contorno: su distancia mediana al borde de la silueta, menos de 0,4 veces la del resto de la nube; y a
+    una misma altura (desviación < 10 % del largo de la cola; la moldura de la lápida da 8 %, un canto redondeado
+    15 %). El fondo de
+    unas letras grabadas también es una meseta que mira de frente (vista desde detrás sería igual que un marco), pero
+    está dentro."""
+    from scipy import ndimage
+    from scipy.spatial import cKDTree
+    if abs(end - med) < 1e-9:
+        return False
+    t = np.flatnonzero((h - med) / (end - med) > 0.5)
+    if len(t) < 200 or len(t) > 0.6 * len(h):
+        return False
+    uv = np.c_[s @ u, s @ v]
+    lo = uv.min(0)
+    g = float((uv.max(0) - lo).max()) / 128
+    ij = np.floor((uv - lo) / g).astype(int)
+    occ = np.zeros(ij.max(0) + 1, bool)
+    occ[ij[:, 0], ij[:, 1]] = True
+    occ = ndimage.binary_fill_holes(ndimage.binary_closing(occ, iterations=2) | occ)
+    d = ndimage.distance_transform_edt(np.pad(occ, 1))[1:-1, 1:-1][ij[:, 0], ij[:, 1]]
+    rest = np.ones(len(h), bool)
+    rest[t] = False
+    if np.median(d[t]) >= 0.4 * np.median(d[rest]):
+        return False
+    if np.std(h[t]) > 0.1 * abs(end - med):      # una rampa (un canto redondeado), no una meseta
+        return False
+    t = t[np.random.default_rng(0).choice(len(t), min(m, len(t)), replace=False)]
+    _, nb = cKDTree(s).query(s[t], k=16, workers=-1)
+    Q = s[nb] - s[nb].mean(1, keepdims=True)
+    N = np.linalg.eigh(np.einsum('nki,nkj->nij', Q, Q))[1][:, :, 0]
+    return float((np.abs(N @ n) > 0.707).mean()) > 0.5
 
 
 def _plane_from_points(pts):
