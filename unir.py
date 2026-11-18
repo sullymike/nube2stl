@@ -124,8 +124,13 @@ def merge(xyz, rgb, nrm, info, entries, main_path=None, log=lambda s: None):
         b, bnrm = transform(e.get('M', IDENTITY), b, bnrm)
         # zona común: fuera los puntos de la añadida con uno de la principal más cerca que 1,5 separaciones
         sp = spacing(xyz)
-        d, _ = cKDTree(xyz).query(b, distance_upper_bound=1.5 * sp, workers=-1)
+        d, j = cKDTree(xyz).query(b, distance_upper_bound=1.5 * sp, workers=-1)
         keep = ~np.isfinite(d)
+        if e.get('color', True) and rgb is not None and brgb is not None:      # igualar el color de la tanda
+            fit = color_match(rgb[j[~keep]], brgb[~keep])
+            if fit is not None:
+                brgb = apply_color(brgb, fit)
+                log('  ' + color_text(fit))
         if not keep.all():
             log(f'  zona común: se quitan {(~keep).sum():,} puntos repetidos de la nube añadida '
                 f'({100 * (~keep).mean():.0f} %)')
@@ -139,6 +144,45 @@ def merge(xyz, rgb, nrm, info, entries, main_path=None, log=lambda s: None):
         xyz = np.concatenate([xyz, b])
         log(f'  {len(b):,} puntos añadidos; en total {len(xyz):,}')
     return xyz, rgb, nrm
+
+
+def color_match(a, b, min_pairs=500):
+    """Corrección de color de una tanda: por canal, a ≈ ganancia · b + desplazamiento, ajustada con las parejas de
+    puntos de la zona común (a de la principal, b de la añadida, 0–255). Se ajusta dos veces quitando las parejas
+    que no cuadran (sombras, reflejos, partes que cambian). -> (ganancia (3,), desplazamiento (3,), parejas) o None
+    si hay pocas."""
+    a, b = np.asarray(a, np.float64), np.asarray(b, np.float64)
+    if len(a) < min_pairs:
+        return None
+    if len(a) > 200_000:
+        k = np.random.default_rng(0).choice(len(a), 200_000, replace=False)
+        a, b = a[k], b[k]
+    g, o = np.ones(3), np.zeros(3)
+    for c in range(3):
+        ok = np.ones(len(a), bool)
+        for _ in range(3):
+            X = np.c_[b[ok, c], np.ones(ok.sum())]
+            (g[c], o[c]), *_ = np.linalg.lstsq(X, a[ok, c], rcond=None)
+            r = a[:, c] - (g[c] * b[:, c] + o[c])
+            mad = np.median(np.abs(r[ok] - np.median(r[ok]))) + 1e-6
+            ok = np.abs(r - np.median(r[ok])) < 3 * 1.4826 * mad
+            if ok.sum() < min_pairs // 2:
+                break
+        g[c], o[c] = np.clip(g[c], 0.5, 2.0), np.clip(o[c], -80, 80)
+    return g, o, len(a)
+
+
+def apply_color(rgb, fit):
+    g, o = fit[0], fit[1]
+    return np.clip(np.asarray(rgb, np.float64) * g + o, 0, 255).round().astype(np.uint8)
+
+
+def color_text(fit):
+    g, o, n = fit
+    f = lambda x: f'{x:.2f}'.replace('.', ',')                         # noqa: E731
+    nn = f'{n:,}'.replace(',', '.')
+    return (f'color igualado con la principal ({nn} parejas de la zona común): ganancia R {f(g[0])}, G {f(g[1])}, '
+            f'B {f(g[2])}; desplazamiento {o[0]:+.0f}, {o[1]:+.0f}, {o[2]:+.0f}')
 
 
 # ------------------------------------------------------------------ alineación

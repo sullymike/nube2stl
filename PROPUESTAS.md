@@ -34,7 +34,11 @@ la matriz en `Params.merge` y `--unir` en la consola para nubes ya alineadas.
   mirarla.
 
 **Pendiente de A1:**
-- igualar el color entre tandas;
+- igualar el color entre tandas — *HECHO el 18-11-2026 (0.25.0)*: `unir.color_match` (por canal, a ≈ g·b + o con
+  las parejas de la zona común, dos reajustes quitando las que se salen 3 MAD; g en 0,5–2), en `merge` si la entrada
+  tiene `'color'` (por defecto sí) y casilla «Igualar el color con la principal» en la ventana de unir (se ve con
+  «colores reales»). Prueba `Union.test_igualar_color`. Mitad de la lápida con ganancias 0,75/0,8/0,95 y +0/+5/+25:
+  recupera 1,33/1,25/1,05 y +1/−6/−26;
 - en la zona común, quedarse con los puntos mejor vistos;
 - la vista de comprobación coloreada por separación — *HECHO el 18-11-2026 (0.25.0)*: color «separación» en la
   ventana de unir (`unir.separation`: distancia con signo a la superficie de la principal, normales PCA orientadas

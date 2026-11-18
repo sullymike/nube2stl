@@ -171,6 +171,15 @@ class MergeDialog(QDialog):
         self.color.currentTextChanged.connect(lambda *_: self._show(home=False))
         row.addWidget(self.color, 1)
         v.addLayout(row)
+        self.match = QCheckBox('Igualar el color con la principal')
+        self.match.setChecked(True)
+        self.match.setToolTip('Dos tandas con distinta luz: en la zona común se compara el color de cada punto de la '
+                              'añadida\ncon el del punto más cercano de la principal y se corrige toda la añadida '
+                              '(ganancia y\ndesplazamiento por canal), para que no se note la costura. Se ve con el '
+                              'color «colores reales».')
+        self.match.toggled.connect(lambda *_: self._show(home=False))
+        v.addWidget(self.match)
+        self._fit = None
         self.sep_lbl = note('')
         self.sep_lbl.hide()
         v.addWidget(self.sep_lbl)
@@ -303,6 +312,16 @@ class MergeDialog(QDialog):
         mode = self.color.currentText()
         ca = np.tile(COL_A, (len(self.As), 1)) if mode != 'colores reales' or self.rgbA is None else self.rgbA
         cb = np.tile(COL_B, (len(self.Bs), 1)) if mode != 'colores reales' or self.rgbB is None else self.rgbB
+        self.match.setVisible(self.rgbA is not None and self.rgbB is not None)
+        if mode == 'colores reales' and self.match.isVisible() and self.match.isChecked() and self.M is not None:
+            from scipy.spatial import cKDTree
+            d, j = cKDTree(self.As).query(Bd, distance_upper_bound=1.5 * unir.spacing(self.As), workers=-1)
+            ok = np.isfinite(d)
+            self._fit = unir.color_match(self.rgbA[j[ok]] * 255, self.rgbB[ok] * 255, min_pairs=200)
+            if self._fit is not None:
+                cb = unir.apply_color(self.rgbB * 255, self._fit) / 255.0
+            self.match.setToolTip(self.match.toolTip().split('\n\n')[0]
+                                  + ('\n\n' + unir.color_text(self._fit) if self._fit is not None else ''))
         if mode == 'zona común' and self.M is not None:
             from scipy.spatial import cKDTree
             d, _ = cKDTree(self.As).query(Bd, workers=-1)
@@ -475,6 +494,7 @@ class MergeDialog(QDialog):
         if self.M is None:
             return
         self.result_entry = {'path': self.path_b, 'units': self.units.currentText(),
-                             'M': [round(float(x), 10) for x in np.asarray(self.M).ravel()]}
+                             'M': [round(float(x), 10) for x in np.asarray(self.M).ravel()],
+                             'color': bool(self.match.isChecked())}
         self.result_text = self.status.text()
         self.accept()

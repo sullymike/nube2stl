@@ -635,6 +635,22 @@ class Union(unittest.TestCase):
         self.assertLess(s0 * np.median(dt[lo]), 0)
         self.assertGreater(s0 * np.median(dt[hi]), 0)
 
+    def test_igualar_color(self):
+        """Igualar el color de la tanda añadida: la principal es la añadida con ganancia 1,2 / 0,9 / 1,0 y
+        desplazamiento −10 / +5 / 0, más ruido y un 10 % de parejas que no cuadran (sombras): se recupera."""
+        import unir
+        rng = np.random.default_rng(6)
+        b = rng.uniform(30, 200, (5000, 3))
+        a = b * [1.2, 0.9, 1.0] + [-10, 5, 0] + rng.normal(0, 3, (5000, 3))
+        a[:500] = rng.uniform(0, 255, (500, 3))
+        g, o, n = unir.color_match(a, b)
+        self.assertTrue(np.allclose(g, [1.2, 0.9, 1.0], atol=0.03))
+        self.assertTrue(np.allclose(o, [-10, 5, 0], atol=4))
+        self.assertIsNone(unir.color_match(a[:100], b[:100]))       # pocas parejas: no se toca
+        out = unir.apply_color(np.array([[250, 10, 100]]), (g, o, n))
+        self.assertEqual(out.dtype, np.uint8)
+        self.assertLessEqual(int(out.max()), 255)
+
     @staticmethod
     def _rot(seed):
         rng = np.random.default_rng(seed)
