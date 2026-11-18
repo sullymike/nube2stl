@@ -59,23 +59,91 @@ def fmt_mm(x):
 
 
 class _LassoOverlay(QWidget):
-    """Trazo del lazo encima de la vista 3D (no recibe el ratón)."""
+    """Trazo del lazo o del pincel encima de la vista 3D (no recibe el ratón). Con el pincel enseña también un
+    círculo del tamaño del pincel donde está el cursor."""
 
     def __init__(self, parent):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WA_NoSystemBackground)
         self.pts = []
+        self.mode = 'lazo'            # 'lazo' | 'pincel'
+        self.r = 0                    # radio del pincel (píxeles)
+        self.erase = False
+        self.cursor_at = None
 
     def paintEvent(self, ev):
-        if len(self.pts) < 2:
-            return
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        rgb = (90, 110, 130) if self.erase else (224, 122, 63)
+        if self.mode == 'pincel':
+            if self.pts:
+                pen = QPen(QColor(*rgb, 110), 2 * self.r, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+                p.setPen(pen)
+                if len(self.pts) == 1:
+                    p.drawPoint(self.pts[0])
+                else:
+                    p.drawPolyline(QPolygonF(self.pts))
+            if self.cursor_at is not None:
+                p.setBrush(Qt.NoBrush)
+                p.setPen(QPen(QColor(255, 255, 255, 200), 3))
+                p.drawEllipse(self.cursor_at, self.r, self.r)
+                p.setPen(QPen(QColor(*rgb), 1.5))
+                p.drawEllipse(self.cursor_at, self.r, self.r)
+            return
+        if len(self.pts) < 2:
+            return
         poly = QPolygonF(self.pts)
-        p.setBrush(QColor(224, 122, 63, 40))
-        p.setPen(QPen(QColor(224, 122, 63), 2))
+        p.setBrush(QColor(*rgb, 40))
+        p.setPen(QPen(QColor(*rgb), 2))
         p.drawPolygon(poly)
+
+
+def brush_centers(P, mvp, p00, size, stroke, r_px):
+    """Trazo del pincel en pantalla -> centros en la escena y radio (unidades de la escena).
+
+    P (N,3) puntos de la vista; mvp la matriz 4×4 de la vista (puntos -> −1…1); p00 el elemento [0,0] de la
+    proyección (para pasar píxeles a unidades a cada profundidad); size (ancho, alto) en píxeles; stroke (K,2) el
+    trazo en píxeles; r_px el radio del pincel en píxeles. A lo largo del trazo, cada medio radio, se toma el punto
+    visible más cercano al cursor: el de delante entre los que caen en el círculo (los de detrás, a más de un radio
+    de profundidad, no cuentan). Así se pinta la superficie que se ve, no lo que queda detrás."""
+    from scipy.spatial import cKDTree
+    W, H = size
+    S = np.asarray(stroke, np.float64).reshape(-1, 2)
+    if len(S) > 1:                                    # remuestrear cada medio radio
+        seg = np.linalg.norm(np.diff(S, axis=0), axis=1)
+        t = np.r_[0, np.cumsum(seg)]
+        n = max(2, int(t[-1] / max(1.0, r_px / 2)) + 1)
+        tt = np.linspace(0, t[-1], n)
+        S = np.c_[np.interp(tt, t, S[:, 0]), np.interp(tt, t, S[:, 1])]
+    M = np.asarray(mvp, np.float64)
+    P = np.asarray(P)
+    lo, hi = S.min(0) - r_px, S.max(0) + r_px
+    h = P @ M[:3, :3].T.astype(np.float32) + M[:3, 3].astype(np.float32)
+    w = P @ M[3, :3].astype(np.float32) + np.float32(M[3, 3])
+    ok = w > 1e-9
+    w1 = np.where(ok, w, 1)
+    sx = (h[:, 0] / w1 + 1) / 2 * W
+    sy = (1 - h[:, 1] / w1) / 2 * H
+    ok &= (np.abs(h[:, 2] / w1) < 1) & (sx >= lo[0]) & (sx <= hi[0]) & (sy >= lo[1]) & (sy <= hi[1])
+    idx = np.flatnonzero(ok)
+    if not len(idx):
+        return np.zeros((0, 3)), 0.0
+    tree = cKDTree(np.c_[sx[idx], sy[idx]])
+    cen, rad = [], []
+    for k, c in enumerate(tree.query_ball_point(S, r_px)):
+        if not c:
+            continue
+        c = idx[c]
+        wmin = float(w[c].min())
+        rw = r_px * 2 * wmin / (p00 * W)               # el radio en unidades a esa profundidad
+        front = c[w[c] <= wmin + rw]
+        j = front[np.argmin((sx[front] - S[k, 0]) ** 2 + (sy[front] - S[k, 1]) ** 2)]
+        cen.append(P[j])
+        rad.append(rw)
+    if not cen:
+        return np.zeros((0, 3)), 0.0
+    return np.asarray(cen, np.float64), float(np.median(rad))
 
 
 class NavView(gl.GLViewWidget):
@@ -83,14 +151,17 @@ class NavView(gl.GLViewWidget):
     escaped = pyqtSignal()                 # tecla Esc
     boxed = pyqtSignal(QRectF)             # modo recorte: rectángulo dibujado (píxeles de la vista)
     lassoed = pyqtSignal(object)           # modo recorte con lazo: [QPointF] (píxeles de la vista)
+    brushed = pyqtSignal(object)           # pincel: trazo [QPointF] (píxeles de la vista)
 
     def __init__(self, bg):
         super().__init__()
         self._click_at = None
         self.crop_mode = False
         self.crop_shape = 'rect'           # 'rect' | 'lazo'
+        self.brush_r = 0                   # radio del pincel en píxeles (0 = sin pincel)
         self._band = None
         self._lasso = None
+        self._drawing = None               # 'lazo' | 'pincel' mientras se dibuja
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
         self._click_timer.timeout.connect(lambda: self.clicked.emit(self._click_at))
@@ -102,6 +173,42 @@ class NavView(gl.GLViewWidget):
         self.marker = None
         self._press = None
         self._anim = None
+
+    def _overlay(self):
+        if self._lasso is None:
+            self._lasso = _LassoOverlay(self)
+        self._lasso.setGeometry(self.rect())
+        return self._lasso
+
+    def set_brush(self, r, erase=False):
+        """Pincel de radio r píxeles (0 = sin pincel); erase: borrar en vez de pintar (solo cambia el color)."""
+        self.brush_r = r
+        self.setMouseTracking(r > 0)
+        if r > 0:
+            o = self._overlay()
+            o.mode, o.r, o.erase = 'pincel', r, erase
+            o.show()
+            o.raise_()
+            o.update()
+        elif self._lasso is not None and self._drawing is None:
+            self._lasso.cursor_at = None
+            self._lasso.hide()
+
+    def set_draw_erase(self, erase):
+        if self._lasso is not None:
+            self._lasso.erase = erase
+            self._lasso.update()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        if self._lasso is not None:
+            self._lasso.setGeometry(self.rect())
+
+    def leaveEvent(self, ev):
+        if self._lasso is not None and self._lasso.cursor_at is not None:
+            self._lasso.cursor_at = None
+            self._lasso.update()
+        super().leaveEvent(ev)
 
     # ------------------------------------------------------------------ escena
     def clear_scene(self):
@@ -225,16 +332,17 @@ class NavView(gl.GLViewWidget):
         self.mousePos = ev.localPos()
         self._press = ev.button()
         self._press_at = ev.localPos()
-        if (self.crop_mode and self.crop_shape == 'lazo' and ev.button() == Qt.LeftButton
-                and not (ev.modifiers() & Qt.ShiftModifier)):
-            if self._lasso is None:
-                self._lasso = _LassoOverlay(self)
-            self._lasso.setGeometry(self.rect())
-            self._lasso.pts = [ev.localPos()]
-            self._lasso.show()
-            self._lasso.raise_()
+        draw = ev.button() == Qt.LeftButton and not (ev.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))
+        if draw and (self.brush_r > 0 or (self.crop_mode and self.crop_shape == 'lazo')):
+            o = self._overlay()
+            o.mode = 'pincel' if self.brush_r > 0 else 'lazo'
+            o.pts = [ev.localPos()]
+            o.show()
+            o.raise_()
+            o.update()
+            self._drawing = o.mode
             return
-        if self.crop_mode and ev.button() == Qt.LeftButton and not (ev.modifiers() & Qt.ShiftModifier):
+        if self.crop_mode and draw:
             from PyQt5.QtWidgets import QRubberBand
             if self._band is None:
                 self._band = QRubberBand(QRubberBand.Rectangle, self)
@@ -253,7 +361,10 @@ class NavView(gl.GLViewWidget):
         diff = lpos - self.mousePos
         self.mousePos = lpos
         b = ev.buttons()
-        if self._lasso is not None and self._lasso.isVisible():
+        if self.brush_r > 0 and self._lasso is not None:     # el círculo del pincel sigue al cursor
+            self._lasso.cursor_at = lpos
+            self._lasso.update()
+        if self._drawing:
             if (lpos - self._lasso.pts[-1]).manhattanLength() >= 3:
                 self._lasso.pts.append(lpos)
                 self._lasso.update()
@@ -271,11 +382,15 @@ class NavView(gl.GLViewWidget):
             self._show_marker(True)
 
     def mouseReleaseEvent(self, ev):
-        if self._lasso is not None and self._lasso.isVisible():
+        if self._drawing:
+            kind, self._drawing = self._drawing, None
             pts = self._lasso.pts
-            self._lasso.hide()
             self._lasso.pts = []
-            self.unsetCursor()
+            if kind == 'pincel':
+                self._lasso.update()
+                self.brushed.emit(pts)
+                return
+            self._lasso.hide()
             if len(pts) >= 3 and QPolygonF(pts).boundingRect().width() > 3 and \
                     QPolygonF(pts).boundingRect().height() > 3:
                 self.lassoed.emit(pts)
@@ -374,7 +489,9 @@ class Viewer3D(QWidget):
     """Vista 3D con barra de vistas y opciones encima y la ayuda de navegación debajo."""
     group_clicked = pyqtSignal(int)      # nube: clic sobre un punto de un grupo suelto (número de grupo)
     crop_drawn = pyqtSignal(object, object, str)    # nube: matriz 4×4 de la vista, polígono −1…1 y qué hacer
-                                                    # ('dentro', 'fuera' o 'detalle': zona de detalle, no recorta)
+                                                    # ('dentro', 'fuera'; 'detalle' o 'detalle-borrar': zona de
+                                                    # detalle, no recorta)
+    zone_brushed = pyqtSignal(object, float, bool)  # nube: trazo del pincel (centros en la vista, radio, borrar)
     crop_undo = pyqtSignal()
     crop_clear = pyqtSignal()
     HINT = ('<b>Izq.</b> girar · <b>Der.</b>, <b>central</b> o <b>Mayús+izq.</b> desplazar · <b>Rueda</b> zoom hacia '
@@ -441,39 +558,72 @@ class Viewer3D(QWidget):
             cr.setText('✂ Recortar')
             cr.setCheckable(True)
             cr.setCursor(Qt.PointingHandCursor)
-            cr.setToolTip('Recortar la nube o marcar una zona de detalle: con esto marcado, arrastra un rectángulo\n'
-                          'o dibuja un lazo en la vista. Se marca en la dirección en que miras: gira la vista para que\n'
-                          'lo que quieres quede separado de lo demás (p. ej. desde arriba para una franja del terreno).\n'
-                          'Puedes hacer varios seguidos desde vistas distintas. Lo recortado se ve en gris claro y\n'
-                          'las zonas de detalle en naranja.')
+            cr.setToolTip('Recortar la nube: con esto marcado, arrastra un rectángulo o dibuja un lazo en la vista.\n'
+                          'Se recorta en la dirección en que miras: gira la vista para que lo que quieres quede\n'
+                          'separado de lo demás (p. ej. desde arriba para una franja del terreno). Puedes hacer\n'
+                          'varios seguidos desde vistas distintas; lo recortado se ve en gris claro.\n'
+                          'Para girar sin soltar la herramienta: Ctrl + botón izquierdo.')
             bl.addWidget(cr)
             self.crop_btn = cr
             sh = QComboBox()
             sh.addItems(['▭ rectángulo', '◌ lazo'])
             sh.setToolTip('Forma: rectángulo (arrastrar de una esquina a otra) o lazo (dibujar el contorno a mano\n'
                           'alzada, con el botón pulsado; al soltar se cierra)')
-            sh.currentIndexChanged.connect(lambda i: setattr(self.view, 'crop_shape', 'lazo' if i else 'rect'))
             bl.addWidget(sh)
             self.crop_shape = sh
             cm = QComboBox()
-            cm.addItems(['dejar lo de dentro', 'quitar lo de dentro', 'zona de detalle'])
-            cm.setToolTip('Qué hacer con los puntos que quedan dentro:\n'
-                          'dejar o quitar (recorte), o marcarlos como zona de detalle: no se quita nada y ahí la\n'
-                          'pieza se hace con más resolución (tipos con Poisson: objeto, terreno, bloque, 3d)')
+            cm.addItems(['dejar lo de dentro', 'quitar lo de dentro'])
+            cm.setToolTip('Qué hacer con los puntos que quedan dentro: dejarlos (y quitar el resto) o quitarlos')
             bl.addWidget(cm)
             self.crop_how = cm
+            zb = QToolButton()
+            zb.setText('🖌 Zona de detalle')
+            zb.setCheckable(True)
+            zb.setCursor(Qt.PointingHandCursor)
+            zb.setToolTip('Marcar dónde se quiere más resolución (tipos con Poisson: objeto, terreno, bloque, 3d).\n'
+                          'No se quita nada: lo marcado se tiñe de naranja y ahí la pieza se hace con la celda de\n'
+                          '«Resolución de las zonas»; en el resto, con la normal.\n'
+                          'Pincel: pinta la superficie que tocas. Lazo y rectángulo: marcan todo lo que queda\n'
+                          'dentro, también lo de detrás en la dirección en que miras.\n'
+                          'Para girar sin soltar la herramienta: Ctrl + botón izquierdo.')
+            bl.addWidget(zb)
+            self.zone_btn = zb
+            zt = QComboBox()
+            zt.addItems(['🖌 pincel', '◌ lazo', '▭ rectángulo'])
+            zt.setToolTip('Pincel: arrastra con el botón izquierdo sobre la pieza y se pinta lo que toca el círculo.\n'
+                          'Lazo: dibuja el contorno a mano alzada. Rectángulo: arrastra de una esquina a otra.')
+            bl.addWidget(zt)
+            self.zone_tool = zt
+            zs = QComboBox()
+            zs.addItems(list(self.BRUSH))
+            zs.setCurrentText('mediano')
+            zs.setToolTip('Tamaño del pincel en la pantalla (el círculo que sigue al cursor). Con zoom, el mismo\n'
+                          'pincel pinta un trozo más pequeño de la pieza.')
+            bl.addWidget(zs)
+            self.zone_size = zs
+            ze = QComboBox()
+            ze.addItems(['pintar', 'borrar'])
+            ze.setToolTip('Pintar añade a las zonas de detalle; borrar quita de ellas lo que toques\n'
+                          '(también con el lazo o el rectángulo)')
+            bl.addWidget(ze)
+            self.zone_erase = ze
             un = QToolButton()
             un.setText('Deshacer')
-            un.setToolTip('Deshacer el último recorte o zona de detalle')
+            un.setToolTip('Deshacer el último recorte, trazo o zona de detalle')
             un.clicked.connect(self.crop_undo.emit)
             bl.addWidget(un)
             cl = QToolButton()
-            cl.setText('Sin recortes')
+            cl.setText('Quitar todo')
             cl.setToolTip('Quitar todos los recortes y las zonas de detalle: vuelve la nube entera')
             cl.clicked.connect(self.crop_clear.emit)
             bl.addWidget(cl)
-            self.crop_tools = [sh, cm, un, cl]
-            cr.toggled.connect(self._crop_toggled)
+            self.crop_tools = [sh, cm, un, cl, zt, zs, ze]
+            self.mark_tools = [un, cl]
+            cr.toggled.connect(lambda on: self._tool_toggled(cr, on))
+            zb.toggled.connect(lambda on: self._tool_toggled(zb, on))
+            for c in (sh, zt, zs, ze):
+                c.currentIndexChanged.connect(lambda *_: self._apply_tool())
+            self._apply_tool()
             bl.addSpacing(10)
             bl.addWidget(QLabel('Puntos'))
             cb = QComboBox()
@@ -526,6 +676,7 @@ class Viewer3D(QWidget):
         self.view.clicked.connect(self._clicked)
         self.view.boxed.connect(self._boxed)
         self.view.lassoed.connect(self._lassoed)
+        self.view.brushed.connect(self._brushed)
         self.view.escaped.connect(self.clear_measure)
 
     def _tools_bar(self, colors):
@@ -643,16 +794,12 @@ class Viewer3D(QWidget):
         ext = float(np.ptp(pts, 0).max())
         self._redraw(home=dict(center=(0, 0, 0), distance=ext * 1.5, elevation=30, azimuth=45))
 
-    def _crop_toggled(self, on):
-        self.view.crop_mode = on
-        if on and self.measure_btn.isChecked():
-            self.measure_btn.setChecked(False)
-        self.view.setCursor(Qt.CrossCursor) if on else self.view.unsetCursor()
-
     # ------------------------------------------------------------------ medir
     def _measure_toggled(self, on):
-        if on and getattr(self, 'crop_btn', None) is not None and self.crop_btn.isChecked():
-            self.crop_btn.setChecked(False)
+        if on and self.kind == 'nube':
+            for b in (self.crop_btn, self.zone_btn):
+                if b.isChecked():
+                    b.setChecked(False)
         if on:
             self.view.setCursor(Qt.CrossCursor)
             self.measure_lbl.setText('clic en el primer punto')
@@ -718,17 +865,74 @@ class Viewer3D(QWidget):
         self._measure_items = items
 
     def set_crop_state(self, n):
-        """Número de recortes y zonas hechos (para activar Deshacer / Sin recortes)."""
-        for w in self.crop_tools[2:]:
+        """Número de recortes y zonas hechos (para activar Deshacer / Quitar todo)."""
+        for w in self.mark_tools:
             w.setEnabled(n > 0)
 
-    CROP_HOW = ('dentro', 'fuera', 'detalle')
+    def hide_marks(self):
+        """Sin herramientas de recorte ni de zonas (vistas que solo enseñan una nube)."""
+        for w in [self.crop_btn, self.zone_btn] + self.crop_tools:
+            w.hide()
+        self._hidden_marks = True
+
+    CROP_HOW = ('dentro', 'fuera')
+    BRUSH = {'fino': 6, 'mediano': 14, 'grueso': 30, 'muy grueso': 60}     # radio en píxeles
+
+    def _how(self):
+        """Qué hacer con lo dibujado: 'dentro' o 'fuera' (recorte), 'detalle' o 'detalle-borrar' (zonas)."""
+        if self.zone_btn.isChecked():
+            return 'detalle-borrar' if self.zone_erase.currentIndex() else 'detalle'
+        return self.CROP_HOW[self.crop_how.currentIndex()]
+
+    def _tool_toggled(self, btn, on):
+        """Recortar, Zona de detalle y Medir no pueden estar marcados a la vez."""
+        if on:
+            for b in (self.crop_btn, self.zone_btn, self.measure_btn):
+                if b is not btn and b.isChecked():
+                    b.setChecked(False)
+        self._apply_tool()
+
+    def _apply_tool(self):
+        """Estado de la vista y opciones visibles según la herramienta marcada."""
+        crop, zone = self.crop_btn.isChecked(), self.zone_btn.isChecked()
+        brush = zone and self.zone_tool.currentIndex() == 0
+        if not getattr(self, '_hidden_marks', False):
+            for w in (self.crop_shape, self.crop_how):
+                w.setVisible(crop)
+            for w in (self.zone_tool, self.zone_erase):
+                w.setVisible(zone)
+            self.zone_size.setVisible(brush)
+        v = self.view
+        v.crop_mode = crop or (zone and not brush)
+        if crop:
+            v.crop_shape = 'lazo' if self.crop_shape.currentIndex() else 'rect'
+        elif zone:
+            v.crop_shape = 'lazo' if self.zone_tool.currentIndex() == 1 else 'rect'
+        erase = zone and self.zone_erase.currentIndex() == 1
+        v.set_brush(self.BRUSH[self.zone_size.currentText()] if brush else 0, erase)
+        v.set_draw_erase(erase)
+        if crop or zone:
+            v.setCursor(Qt.CrossCursor)
+        elif not self.measure_btn.isChecked():
+            v.unsetCursor()
+
+    def _brushed(self, pts):
+        """Trazo del pincel -> centros en la escena y radio, para la ventana."""
+        v = self.view
+        if v.pick is None or not len(v.pick):
+            return
+        p00 = float(v.projectionMatrix().data()[0])
+        r_px = self.BRUSH[self.zone_size.currentText()]
+        cen, r = brush_centers(v.pick, v._mvp(), p00, (max(v.width(), 1), max(v.height(), 1)),
+                               [[q.x(), q.y()] for q in pts], r_px)
+        if len(cen):
+            self.zone_brushed.emit(cen, r, self.zone_erase.currentIndex() == 1)
 
     def _lassoed(self, pts):
         """Lazo dibujado -> matriz de la vista y polígono en coordenadas −1…1."""
         w, h = max(self.view.width(), 1), max(self.view.height(), 1)
         poly = [[2 * q.x() / w - 1, 1 - 2 * q.y() / h] for q in pts]
-        self.crop_drawn.emit(self.view._mvp(), poly, self.CROP_HOW[self.crop_how.currentIndex()])
+        self.crop_drawn.emit(self.view._mvp(), poly, self._how())
 
     def _boxed(self, r):
         """Rectángulo dibujado en modo recorte -> matriz de la vista y polígono en coordenadas −1…1."""
@@ -736,7 +940,7 @@ class Viewer3D(QWidget):
         xs = [2 * r.left() / w - 1, 2 * r.right() / w - 1]
         ys = [1 - 2 * r.bottom() / h, 1 - 2 * r.top() / h]
         poly = [[xs[0], ys[0]], [xs[1], ys[0]], [xs[1], ys[1]], [xs[0], ys[1]]]
-        self.crop_drawn.emit(self.view._mvp(), poly, self.CROP_HOW[self.crop_how.currentIndex()])
+        self.crop_drawn.emit(self.view._mvp(), poly, self._how())
 
     def redraw_extra(self):
         """Volver a dibujar solo los marcadores de extra_items (sin tocar la cámara)."""
@@ -750,7 +954,7 @@ class Viewer3D(QWidget):
         if self.measure_btn.isChecked():
             self._measure_click(pos)
             return
-        if self.view.crop_mode:
+        if self.view.crop_mode or self.view.brush_r:
             return
         """Clic en la nube: si cae sobre un punto de un grupo suelto, avisar con su número."""
         if self.loose is None or self._data is None or self._data[0] != 'nube':

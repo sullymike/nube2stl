@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.23.0'
+__version__ = '0.24.0'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,14 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.24.0', 'noviembre 2026', [
+        'Zonas de detalle con pincel: botón propio «🖌 Zona de detalle» en la vista de la nube (antes estaba escondido '
+        'en el desplegable del recorte). Se pinta arrastrando sobre la pieza, con cuatro tamaños de pincel, y solo '
+        'se marca la superficie que se ve, no lo que queda detrás. También con lazo o rectángulo, y con «borrar» se '
+        'quita de las zonas lo que se toca',
+        'Ctrl + botón izquierdo gira la vista sin soltar el recorte o el pincel; «Sin recortes» se llama ahora '
+        '«Quitar todo»',
+    ]),
     ('0.23.0', 'noviembre 2026', [
         'Recorte con lazo: junto a ✂ Recortar se elige rectángulo o lazo; el lazo se dibuja a mano alzada alrededor '
         'de lo que interesa y se cierra al soltar',

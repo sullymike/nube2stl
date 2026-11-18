@@ -347,7 +347,7 @@ SPEC = [
          'Solo modo 3D. Detalle del octree: +1 = doble de detalle y ~4× memoria.'),
         ('detail_res', 'Resolución de las zonas', 'f', dict(lo=0, hi=100, step=0.1, dec=2, suf='mm',
                                                              special='la del escaneo'),
-         'Celda dentro de las zonas de detalle (✂ Recortar › zona de detalle, en la vista de la nube).\n'
+         'Celda dentro de las zonas de detalle (🖌 Zona de detalle, en la vista de la nube).\n'
          'Solo tipos con Poisson. La del escaneo: el detalle máximo que tiene la nube.'),
         ('front_pct', 'Percentil frente', 'f', dict(lo=0, hi=100, step=5, dec=0, suf='%'),
          'Qué punto de cada celda se toma: 100 = el más saliente, 90 = robusto a puntos sueltos.'),
@@ -479,7 +479,9 @@ def detail_html(st, prm):
     """Línea del plan para las zonas de detalle (si las hay)."""
     if not getattr(prm, 'detail', None):
         return ''
-    n = len(prm.detail)
+    n, ne = relief.zone_count(prm.detail)
+    if not n:
+        return ''
     if not relief.has_detail(prm):
         return (f'<br><span style="color:{C["muted"]}">{n} zona{"s" if n > 1 else ""} de detalle: solo cuentan en '
                 f'los tipos con Poisson (objeto, terreno, bloque, 3d)</span>')
@@ -492,7 +494,8 @@ def detail_html(st, prm):
                 f'Sirven cuando la resolución general es más gruesa que el escaneo</span>')
     s = pl['scale']
     frac = float(st.get('detail_frac', 0.0))
-    txt = (f'<br><b>Zonas de detalle:</b> {n} · celda de {rf:.3g} ({rf * s:.3g} mm en la pieza) · '
+    txt = (f'<br><b>Zonas de detalle:</b> {n}' + (f' (y {ne} borrado{"s" if ne > 1 else ""})' if ne else '')
+           + f' · celda de {rf:.3g} ({rf * s:.3g} mm en la pieza) · '
            f'{100 * frac:.1f} % de la nube')
     if not relief.is_real(prm) and rf < 0.9 * pl['res_print']:
         txt += (f'<br><span style="color:{C["accent_dk"]}">⚠ Más fina de lo que imprime la boquilla '
@@ -1898,6 +1901,7 @@ class MainWindow(QMainWindow):
         if HAVE_GL:
             self.cloud_view.group_clicked.connect(self._group_clicked)
             self.cloud_view.crop_drawn.connect(self._crop_drawn)
+            self.cloud_view.zone_brushed.connect(self._zone_brushed)
             self.cloud_view.crop_undo.connect(self._crop_undo)
             self.cloud_view.crop_clear.connect(self._crop_clear)
             self.cloud_view.set_crop_state(0)
@@ -2898,9 +2902,7 @@ class MainWindow(QMainWindow):
         dlg.resize(1150, 780)
         v = QVBoxLayout(dlg)
         view = visor.Viewer3D(C['view'], 'nube', C)
-        view.crop_btn.hide()
-        for w in view.crop_tools:
-            w.hide()
+        view.hide_marks()
         v.addWidget(view, 1)
         lim = max(abs(s.get('p1', -1)), abs(s.get('p99', 1)), 2 * s.get('thr', 0.5)) if s else 1.0
         k = max(1, len(Bm) // PREVIEW_PTS)
@@ -3507,7 +3509,7 @@ class MainWindow(QMainWindow):
         crop = ''
         if li.get('cropped'):
             crop = (f'<br><span style="color:#7f8c8d">● {li["cropped"]:,} puntos recortados</span> (en gris; '
-                    f'«Deshacer» o «Sin recortes» en la vista de la nube)')
+                    f'«Deshacer» o «Quitar todo» en la vista de la nube)')
         return self._loose_note() + crop
 
     def _loose_note(self):
@@ -3605,17 +3607,40 @@ class MainWindow(QMainWindow):
         Mabs = np.asarray(M, np.float64) @ T
         c = {'M': [round(float(x), 12) for x in Mabs.ravel()], 'poly': [[round(float(a), 6) for a in q] for q in poly]}
         shape = 'del rectángulo' if len(poly) == 4 else 'del lazo'
-        if how == 'detalle':
-            self._marks.append('detail')
-            msg = f'Zona de detalle {len(self.details) + 1}: lo de dentro {shape}'
-            if self.params().mode not in relief.ZONE_MODES:
-                msg += ' (solo cuenta en los tipos con Poisson: objeto, terreno, bloque, 3d)'
-            self._set_details(self.details + [c], msg)
+        if how.startswith('detalle'):
+            erase = how == 'detalle-borrar'
+            if erase:
+                c['erase'] = True
+            self._add_detail(c, f'Zona de detalle: se quita lo de dentro {shape}' if erase else
+                             f'Zona de detalle {relief.zone_count(self.details)[0] + 1}: lo de dentro {shape}')
             return
         c['inside'] = how == 'dentro'
         self._marks.append('crop')
         self._set_crops(self.crops + [c], f'Recorte {len(self.crops) + 1}: '
                         + (f'se deja lo de dentro {shape}' if c['inside'] else f'se quita lo de dentro {shape}'))
+
+    def _add_detail(self, z, msg):
+        if self.params().mode not in relief.ZONE_MODES:
+            msg += ' (solo cuenta en los tipos con Poisson: objeto, terreno, bloque, 3d)'
+        if z.get('erase') and not relief.zone_count(self.details)[0]:
+            self.say('No hay zonas de detalle que borrar: elige «pintar» para marcarlas')
+            return
+        self._marks.append('detail')
+        self._set_details(self.details + [z], msg)
+
+    def _zone_brushed(self, centers, r, erase):
+        """Trazo del pincel: los centros vienen en coordenadas de la vista (nube centrada en _cloud_center)."""
+        if getattr(self, 'xyz_all', None) is None or self.busy():
+            return
+        C = np.asarray(centers, np.float64) + np.asarray(self._cloud_center, np.float64)
+        d = 10 ** max(0, 4 - int(np.floor(np.log10(max(r, 1e-9)))))      # unas 5 cifras de r
+        z = {'brush': (np.round(C * d) / d).tolist(), 'r': float(f'{r:.4g}')}
+        if erase:
+            z['erase'] = True
+        w = f'{2 * r:.2g}'.replace('.', ',')                                # la nube está en mm
+        self._add_detail(z, (f'Zona de detalle: borrado con el pincel de {w} mm' if erase else
+                             f'Zona de detalle {relief.zone_count(self.details)[0] + 1}: trazo del pincel de {w} mm '
+                             f'de ancho (con zoom, el mismo pincel pinta más fino)'))
 
     def _group_clicked(self, g):
         """Clic en un grupo suelto de la vista de la nube: conservarlo (verde) o volver a quitarlo (rojo)."""

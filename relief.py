@@ -858,17 +858,53 @@ ZONE_MODES = ('3d', 'objeto', 'bloque')     # los que usan Poisson (el octree se
 
 def has_detail(prm):
     """¿Hay zonas de detalle que se aplican? Solo en los tipos con Poisson (no en mapa de alturas ni esquina)."""
-    return bool(getattr(prm, 'detail', None)) and prm.mode in ZONE_MODES and not getattr(prm, 'corner', False)
+    return (zone_count(getattr(prm, 'detail', None))[0] > 0 and prm.mode in ZONE_MODES
+            and not getattr(prm, 'corner', False))
 
 
 def zone_mask(xyz, zones):
-    """Puntos dentro de alguna zona de detalle (cada zona es un polígono en pantalla con la matriz de la vista,
-    como un recorte: entrada.crop_mask)."""
+    """Puntos dentro de las zonas de detalle. Se aplican en orden y cada zona es un dict de uno de estos dos tipos:
+    - lazo o rectángulo: 'M' y 'poly', un polígono en pantalla con la matriz de la vista, como un recorte
+      (entrada.crop_mask); atraviesa la pieza en la dirección desde la que se dibujó;
+    - pincel: 'brush' [[x, y, z], …] los centros del trazo (unidades de la nube) y 'r' su radio; marca los puntos a
+      menos de r de algún centro, es decir, solo la superficie que se pintó.
+    'erase': True quita esos puntos de las zonas hechas antes (pincel o lazo en modo borrar)."""
     import entrada
     m = np.zeros(len(xyz), bool)
     for z in zones or ():
-        m |= entrada.crop_mask(xyz, [dict(z, inside=True)])
+        if 'brush' in z:
+            inside = brush_mask(xyz, z['brush'], z['r'])
+        else:
+            inside = entrada.crop_mask(xyz, [{'M': z['M'], 'poly': z['poly'], 'inside': True}])
+        if z.get('erase'):
+            m &= ~inside
+        else:
+            m |= inside
     return m
+
+
+def brush_mask(xyz, centers, r):
+    """Puntos a menos de r de alguno de los centros de un trazo del pincel."""
+    C = np.asarray(centers, np.float64).reshape(-1, 3)
+    m = np.zeros(len(xyz), bool)
+    if not len(C) or not len(xyz):
+        return m
+    lo, hi = C.min(0) - r, C.max(0) + r
+    from scipy.spatial import cKDTree
+    tree = cKDTree(C)
+    for i in range(0, len(xyz), 2_000_000):
+        q = np.asarray(xyz[i:i + 2_000_000], np.float64)
+        j = np.flatnonzero(((q >= lo) & (q <= hi)).all(1))     # solo los que caen cerca del trazo
+        if len(j):
+            d, _ = tree.query(q[j], k=1, distance_upper_bound=r)
+            m[i + j[np.isfinite(d)]] = True
+    return m
+
+
+def zone_count(zones):
+    """(zonas pintadas, trazos de borrar)."""
+    e = sum(1 for z in zones or () if z.get('erase'))
+    return len(zones or ()) - e, e
 
 
 def zone_res(prm, res, res_scan):

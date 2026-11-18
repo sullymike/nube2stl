@@ -336,7 +336,7 @@ Pedido: dos ficheros, uno por cara, que van a 90° y solo comparten la arista.
   - La profundidad de Poisson automática no pasa de 11: en piezas de decenas de metros el detalle tiene un suelo de
     centímetros, salvo que se suba a mano (y la memoria crece unas 4 veces por nivel).
 
-## G. Solo una parte de la nube, y más detalle en una zona — *propuesta 17-11-2026; lazo y zonas con Poisson HECHOS en 0.23.0*
+## G. Solo una parte de la nube, y más detalle en una zona — *propuesta 17-11-2026; lazo y zonas con Poisson HECHOS en 0.23.0; pincel (G3) hecho después*
 
 Dos supuestos del usuario: (1) no pasar toda la nube a malla, solo una parte; (2) una parte con más resolución
 que el resto.
@@ -403,6 +403,29 @@ que el resto.
     aparte); `relief.zone_on_mesh` lleva los vértices a la nube y aplica la misma máscara. Comprobado en objeto, 3d
     y bloque (los vértices vuelven a la nube a < 0,5 mm de mediana).
   - Pendiente: zonas en el mapa de alturas.
+
+### G3. Pincel para las zonas de detalle — *HECHO el 18-11-2026 (después de 0.23.0)*
+- **Por qué.** Al usuario le parecía que «pintar la zona» no estaba hecho: la zona solo se marcaba con la tercera
+  opción del desplegable del recorte, que no se veía, y con lazo o rectángulo, no con un pincel.
+- **Hecho.**
+  - Botón propio en la vista de la nube, **🖌 Zona de detalle**, aparte de ✂ Recortar. Al marcarlo salen sus
+    opciones: pincel / lazo / rectángulo, tamaño del pincel (fino, mediano, grueso, muy grueso: 6–60 px de radio
+    en pantalla) y pintar / borrar. Recortar, Zona de detalle y Medir se excluyen; las opciones de cada uno solo se
+    ven con él marcado. El desplegable del recorte vuelve a ser solo dejar / quitar.
+  - Pincel: un círculo sigue al cursor y el trazo se dibuja encima mientras se arrastra. Al soltar,
+    `visor.brush_centers` remuestrea el trazo cada medio radio y en cada paso toma el punto visible más cercano al
+    cursor (el de delante entre los del círculo: los que están a más de un radio de profundidad no cuentan). La
+    zona se guarda como `{'brush': centros, 'r': radio}` (mm de la nube; radio = los píxeles pasados a mm a esa
+    profundidad) y `relief.brush_mask` marca los puntos a menos de r de algún centro. Así se pinta la
+    superficie que se ve, no lo que queda detrás (el lazo sí atraviesa).
+  - Borrar (`'erase': True`, con el pincel o el lazo): `zone_mask` aplica las zonas en orden y las de borrar quitan
+    de lo anterior. Sin nada pintado, no deja borrar. `zone_count` → (pintadas, borradas) para el plan.
+  - Ctrl + botón izquierdo gira la vista sin soltar la herramienta (también en el recorte). «Sin recortes» pasa a
+    «Quitar todo».
+  - Pruebas: `ZonasDetalle.test_pincel_y_borrar` y `test_pincel_pinta_solo_lo_de_delante` (dos placas a 50 mm una
+    de otra: solo se pinta la de delante, en una franja del ancho del pincel). En la ventana, un trazo grueso sobre
+    el bloque de ejemplo y uno de borrar que lo corta: 9,9 % de la nube en la zona; en la malla, triángulos de
+    1,7 mm dentro y 3,3 mm fuera.
 
 ---
 

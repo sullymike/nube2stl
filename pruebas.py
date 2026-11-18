@@ -1144,6 +1144,51 @@ class ZonasDetalle(unittest.TestCase):
         p.detail_res = 1.0
         self.assertEqual(relief.zone_res(p, 2.0, 0.5), 1.0)
 
+    def test_pincel_y_borrar(self):
+        """Pincel: los puntos a menos de r de los centros del trazo. Borrar quita de lo marcado antes."""
+        xyz = np.random.default_rng(1).uniform(-100, 100, (40_000, 3))
+        stroke = {'brush': [[x, 0.0, 0.0] for x in range(-50, 51, 5)], 'r': 10.0}
+        m = relief.zone_mask(xyz, [stroke])
+        x, d = xyz[:, 0], np.hypot(xyz[:, 1], xyz[:, 2])
+        self.assertTrue(m[(np.abs(x) < 50) & (d < 9)].all())          # dentro del «tubo» del trazo
+        self.assertFalse(m[(np.abs(x) > 61) | (d > 10)].any())        # fuera, nada
+        rub = {'brush': [[0.0, 0.0, 0.0]], 'r': 20.0, 'erase': True}
+        m2 = relief.zone_mask(xyz, [stroke, rub])
+        self.assertFalse(m2[np.linalg.norm(xyz, axis=1) < 20].any())  # lo borrado
+        self.assertTrue(m2[(x > 30) & (x < 50) & (d < 9)].all())      # el resto del trazo sigue
+        # borrar solo, sin nada pintado: no hay zonas
+        self.assertEqual(relief.zone_count([stroke, rub]), (1, 1))
+        self.assertFalse(relief.has_detail(relief.Params(mode='objeto', detail=[rub])))
+        self.assertTrue(relief.has_detail(relief.Params(mode='objeto', detail=[stroke, rub])))
+        # un lazo también puede borrar de un pincel
+        lazo = dict(self.zone(), erase=True)
+        m3 = relief.zone_mask(xyz, [stroke, lazo])
+        self.assertFalse((m3 & relief.zone_mask(xyz, [self.zone()])).any())
+
+    def test_pincel_pinta_solo_lo_de_delante(self):
+        """Del trazo en pantalla a los centros: con dos placas una detrás de otra, solo se pinta la de delante.
+        Cámara en z = 500 mirando hacia −z, perspectiva con f = 2 y una vista de 800 × 800 píxeles."""
+        import visor
+        g = np.mgrid[-100:100:1.0, -100:100:1.0].reshape(2, -1).T
+        front = np.c_[g, np.zeros(len(g))]
+        back = np.c_[g, np.full(len(g), -50.0)]
+        P = np.r_[front, back].astype(np.float32)
+        f, n, fa = 2.0, 1.0, 2000.0
+        proj = np.array([[f, 0, 0, 0], [0, f, 0, 0], [0, 0, (fa + n) / (n - fa), 2 * fa * n / (n - fa)],
+                         [0, 0, -1, 0]])
+        view = np.eye(4)
+        view[2, 3] = -500
+        stroke = [[300 + k, 400] for k in range(0, 201, 4)]           # de x = −50 a +50 mm (a 500 mm de la cámara)
+        cen, r = visor.brush_centers(P, proj @ view, f, (800, 800), stroke, 14)
+        self.assertAlmostEqual(r, 14 * 2 * 500 / (f * 800), places=3)  # 8,75 mm: 14 px a esa distancia
+        self.assertTrue(np.allclose(cen[:, 2], 0))                     # todos en la placa de delante
+        self.assertLess(cen[:, 0].min(), -45)
+        self.assertGreater(cen[:, 0].max(), 45)
+        m = relief.zone_mask(P.astype(np.float64), [{'brush': cen.tolist(), 'r': r}])
+        self.assertTrue(m[:len(front)].any())
+        self.assertFalse(m[len(front):].any())                         # la de detrás, sin pintar
+        self.assertLess(np.abs(P[m, 1]).max(), r + 0.5)                # una franja del ancho del pincel
+
     def test_memoria_cuenta_las_zonas(self):
         st = relief.face_stats(rock(n=60_000), relief.Params(mode='objeto'))
         p = relief.Params(mode='objeto', target='real', res=4.0)
