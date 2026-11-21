@@ -255,8 +255,8 @@ y <i>Perfil</i>. En la nube: <i>Arriba</i>, <i>Frente</i> y <i>Lado</i>.</p>
       la zona. Cómo se hace:
       <ul>
         <li><b>Con Poisson</b> (objeto, fragmento, interior, terreno, bloque, 3d): dentro la nube se submuestrea a
-            la celda fina y fuera a la normal, y Poisson sube la profundidad del octree, que solo se afina donde hay
-            puntos densos, es decir, en la zona.</li>
+            la celda fina y fuera a la normal; Poisson se hace con la general y luego la malla se afina en las zonas:
+            triángulos más pequeños llevados a los puntos del escaneo, cosidos con el resto.</li>
         <li><b>Con el mapa de alturas</b> (relieve, curvo, grabado): cada celda de la rejilla se parte en k × k
             (por eso la celda de dentro es la general dividida por un entero: 2 mm ÷ 4 = 0,5 mm). Fuera de las zonas
             la rejilla es la general interpolada, lisa; dentro, una rejilla fina hecha con los puntos de la zona,
@@ -1257,13 +1257,12 @@ avisa de que las zonas no cambian nada.</p>
 zonas es la general dividida por un entero, la primera que no pasa de este valor (con 2 mm y 0,7 pedidos, 2 ÷ 3 =
 0,67 mm). La rejilla fina es solo la de la caja de las zonas; la nota dice cuántas celdas finas salen y avisa si
 pasan de 60 millones.</p>
-<p><b>Relación con la <a href="#p-poisson_depth">Profundidad Poisson</a></b> (los demás tipos): Poisson divide la pieza en un octree y
-lo más fino que llega es <code>tamaño de la pieza × 1,1 ÷ 2<sup>profundidad</sup></code>. Con la profundidad en
-automática, el programa la elige a partir de esta celda (no de la general), así que con zonas sube uno o dos
-niveles; pero Poisson solo se afina donde hay puntos densos, es decir, en las zonas, y el resto de la pieza
-cuesta lo mismo. El máximo con zonas es 12: en una pieza muy grande no se llega a celdas más finas, y la nota lo
-avisa. Si pones la profundidad a mano y es demasiado baja para esta celda, la zona no llega a su resolución; la
-nota también lo dice y propone la automática.</p>
+<p><b>Relación con la <a href="#p-poisson_depth">Profundidad Poisson</a></b> (los demás tipos): las zonas no
+cambian Poisson. Se hace la pieza entera con la resolución general y después, solo en las zonas, la malla se parte
+en triángulos de 1,2 veces esta celda y cada vértice se lleva a los puntos del escaneo (a lo largo de su normal, la
+mediana de los puntos cercanos). En una esfera con bultos de 0,8 mm sale igual de fiel que subiendo Poisson dos
+niveles (0,069 mm frente a 0,068), sin rendijas en el borde de la zona. Hasta la versión 0.25 las zonas subían la
+profundidad de toda la pieza, y en un modelo de 35 m eso llevaba la memoria de 9 a 23 GB.</p>
 <p>Al imprimir, más fino que media boquilla no se ve en la pieza; tiene sentido sobre todo en las copias sin
 impresora o en piezas grandes reducidas.</p>
 <p class="ej"><b>Valores de ejemplo:</b> la del escaneo (0) · 0,5–1 mm para una inscripción en una fachada

@@ -57,9 +57,10 @@ def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
     pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(P))
     if col is not None:
         pc.colors = o3d.utility.Vector3dVector(col.astype(np.float64))
-    del P
     fine = hm.fine[ok] if getattr(hm, 'fine', None) is not None else None
     rf = relief.zone_res(prm, res, hm.res_scan) if fine is not None else None
+    Fz = P[fine] if rf else None
+    del P
     if rf:
         log(f'Zonas de detalle a {rf:.3g}')
     pc = objeto3d.clean_cloud(pc, res, log, fine if rf else None, rf)
@@ -110,12 +111,14 @@ def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
     syn.normals = o3d.utility.Vector3dVector(SN)
     if col is not None:
         syn.colors = o3d.utility.Vector3dVector(np.full((len(SP), 3), 0.55))
+    zp = relief.zone_subset(pc, Fz, rf)                       # para afinar las zonas después de Poisson
+    del Fz
     allpc = pc + syn
     log(f'Puntos sintéticos (trasera y paredes): {len(SP):,}')
 
     # ---------------- Poisson
     ext = np.ptp(np.asarray(allpc.points), 0).max()
-    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, rf or res, ext=ext)
+    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, res, ext=ext)   # las zonas, después
     est_t = int(3.7 * len(allpc.points))
     log(f'Estimación: ≈ {est_t:,} triángulos → {relief.sizes_text(est_t // 2, est_t, col is not None)}')
     log(f'Poisson apantallado, profundidad {depth} (celda ≈ {ext * 1.1 / 2 ** depth:.2f}), '
@@ -128,6 +131,9 @@ def reconstruct_block(hm, prm, log=lambda s: None, mesh=False):
     bad = relief._bad_edges(tris, len(verts))
     if bad:
         verts, tris, vcol, bad = recon3d._repair(verts, tris, vcol, log)
+    if zp is not None:
+        verts, tris, vcol = relief.refine_zones(verts, tris, vcol, *zp, rf=rf, cell=ext * 1.1 / 2 ** depth, log=log)
+        bad = relief._bad_edges(tris, len(verts))
 
     # ---------------- a la pieza: trasera plana en z = 0, escala por el lado mayor de la cara
     z = verts[:, 2] - zb

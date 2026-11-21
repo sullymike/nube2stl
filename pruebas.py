@@ -1560,7 +1560,8 @@ class ZonasDetalle(unittest.TestCase):
 
 
     def test_nota_de_avanzado(self):
-        """La nota bajo «Resolución de las zonas»: celda dentro y fuera y si Poisson llega a ella."""
+        """La nota bajo «Resolución de las zonas»: celda dentro y fuera, y que Poisson es el de la pieza entera (las
+        zonas se afinan después en la malla, así que una profundidad baja ya no las deja sin su celda)."""
         import nube2stl
         st = relief.face_stats(rock(n=30_000), relief.Params(mode='objeto'))
         p = relief.Params(mode='objeto', target='real', res=4.0)
@@ -1569,8 +1570,11 @@ class ZonasDetalle(unittest.TestCase):
         t = nube2stl.zone_note(st, p)
         self.assertIn('celda de 1 mm', t)
         self.assertIn('automática', t)
-        p.poisson_depth = 6                                         # a mano y demasiado baja: avisa
-        self.assertIn('no llega a su celda', nube2stl.zone_note(st, p))
+        self.assertIn('se ajustan a los puntos', t)
+        p.poisson_depth = 6                                         # a mano: lo dice, y las zonas se afinan igual
+        t = nube2stl.zone_note(st, p)
+        self.assertIn('profundidad 6 (a mano', t)
+        self.assertIn('triángulos de 1,2 mm', t)
         p.poisson_depth, p.detail_res = 0, 8.0                      # más gruesa que la general: sin efecto
         self.assertIn('no cambian nada', nube2stl.zone_note(st, p))
 
@@ -1591,10 +1595,11 @@ class ZonasDetalle3D(unittest.TestCase):
         zone = {'M': M.ravel().tolist(), 'poly': [[0.2, -0.3], [0.8, -0.3], [0.8, 0.3], [0.2, 0.3]]}
         zin = relief.zone_mask(xyz, [zone])
         import open3d as o3d
-        err = []
+        err, logs = [], []
         for det in ([], [zone]):
             p = relief.Params(mode='objeto', target='real', res=4.0, denoise=0, detail=det, detail_res=1.0)
-            r = relief.reconstruct(xyz, p)
+            logs.append([])
+            r = relief.reconstruct(xyz, p, log=logs[-1].append)
             self.assertEqual(r.bad_edges, 0)
             Ti = np.linalg.inv(r.xform)
             V = (r.verts @ Ti[:3, :3].T + Ti[:3, 3]).astype(np.float32)
@@ -1615,7 +1620,12 @@ class ZonasDetalle3D(unittest.TestCase):
         (zin0, out0, n0), (zin1, out1, n1) = err
         self.assertLess(zin1, 0.4 * zin0)              # en la zona, el error baja a menos de la mitad (≈ 5 veces)
         self.assertLess(out1, 1.3 * out0)              # fuera, como sin zona
-        self.assertLess(n1, 10 * n0)                   # y la malla no se dispara: solo crece en la zona
+        self.assertLess(n1, 15 * n0)                   # y la malla no se dispara: solo crece en la zona
+        # Poisson va a la misma profundidad con zona y sin ella: la zona se afina después en la malla (en un modelo
+        # de 35 m, subir un nivel de Poisson para unas zonas pequeñas llevaba la memoria de 9 a 23 GB)
+        depth = [next(ln for ln in lg if ln.startswith('Poisson apantallado')).split(',')[0] for lg in logs]
+        self.assertEqual(depth[0], depth[1])
+        self.assertTrue(any('se afina allí' in ln for ln in logs[1]))
 
 
 class ZonasDetalleAlturas(unittest.TestCase):

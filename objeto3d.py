@@ -473,9 +473,14 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=
     if not okn.all():                       # Poisson no admite normales nulas (puntos repetidos, alisado…)
         pc = pc.select_by_index(np.flatnonzero(okn))
     ext = np.ptp(np.asarray(pc.points), 0).max()
-    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, rf or res, ext=ext)
+    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, res, ext=ext)   # las zonas, después
     log(f'Poisson apantallado, profundidad {depth} (celda ≈ {ext * 1.1 / 2 ** depth:.2f}), '
         f'{relief.threads_for(prm, "poisson")} hilos…')
+    zp = None
+    if rf:                                  # puntos de las zonas (en el sistema de la malla) para afinarlas después
+        Pz = np.asarray(pc.points)
+        zm = relief.zone_mask(Pz @ M + c0, prm.detail)
+        zp = (Pz[zm], np.asarray(pc.normals)[zm], np.asarray(pc.colors)[zm] if pc.has_colors() else None)
     try:
         verts, tris, vcol = recon3d._poisson_meshlab(pc, depth, relief.threads_for(prm, 'poisson'))
     except ImportError:
@@ -492,6 +497,9 @@ def reconstruct_object(p, prm, rgb=None, normals=None, log=lambda s: None, mesh=
     bad = relief._bad_edges(tris, len(verts))
     if bad:
         verts, tris, vcol, bad = recon3d._repair(verts, tris, vcol, log)
+    if zp is not None and len(zp[0]):
+        verts, tris, vcol = relief.refine_zones(verts, tris, vcol, *zp, rf=rf, cell=ext * 1.1 / 2 ** depth, log=log)
+        bad = relief._bad_edges(tris, len(verts))
 
     # ---------------- a la pieza: base en z = 0, esquina en el origen, escala
     if prm.cut > 0 or ground:

@@ -1,6 +1,6 @@
 """Versión, autoría e historial de cambios de nube2stl."""
 
-__version__ = '0.25.1'
+__version__ = '0.26.0'
 AUTHOR = 'Jorge Sánchez'
 YEAR = '2026'
 # repositorio de GitHub donde se publican las versiones («usuario/nube2stl»); '' = aún sin publicar
@@ -8,6 +8,13 @@ GITHUB_REPO = 'sullymike/nube2stl'
 
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
+    ('0.26.0', 'noviembre 2026', [
+        'Zonas de detalle con Poisson (objeto, terreno, bloque, 3d): Poisson ya no sube la profundidad de toda la '
+        'pieza; se hace con la resolución general y después, solo en las zonas, la malla se parte en triángulos más '
+        'pequeños que se llevan a los puntos del escaneo (sin rendijas en el borde). Igual de fiel (0,069 mm frente a '
+        '0,068 en la prueba) y la memoria apenas sube: en un terreno de 35 m con 60 zonas, 4,4 GB en vez de 23',
+        'Simplificación por zonas: un solo vértice algo alejado ya no deja la malla entera sin simplificar',
+    ]),
     ('0.25.1', 'noviembre 2026', [
         'Memoria: los OBJ y STL grandes se leen por bloques (un OBJ de 2,5 GB y 19 M triángulos pasaba de 8 GB al '
         'leerlo, en la propia ventana; ahora unos 2 GB y la ventana se queda en 0,7 GB). La textura del OBJ sigue '

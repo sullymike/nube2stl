@@ -521,18 +521,10 @@ def zone_note(st, prm):
             out += '<br>' + warn('No cabe (más de 60 M celdas en la caja): sube este valor o haz las zonas más '
                                  'pequeñas.')
         return out
-    d, auto, cell, d_auto = relief.zone_poisson(st, prm, rf)
-    ok = cell <= 1.25 * rf * 1.01
-    if auto and ok:
-        out += f'<br>Poisson: profundidad {d} (automática, sale de esta celda; sin zonas sería menor).'
-    elif auto:
-        out += '<br>' + warn(f'Poisson: profundidad {d}, la máxima: con una pieza tan grande no baja de '
-                             f'{f(cell / 1.25)} mm, así que una celda más fina no se nota.')
-    elif ok:
-        out += f'<br>Poisson: profundidad {d} (a mano) basta para esta celda (la automática sería {d_auto}).'
-    else:
-        out += '<br>' + warn(f'Poisson: con la profundidad {d} (a mano) no baja de {f(cell / 1.25)} mm y la zona no '
-                             f'llega a su celda. Déjala en automática (saldría {d_auto}).')
+    d, auto, cell, d_auto = relief.zone_poisson(st, prm, pl['res'])
+    out += (f'<br>Poisson: profundidad {d} ({"automática" if auto else "a mano"}, la de la pieza entera: celda de '
+            f'{f(cell)} mm). Después, en las zonas, la malla se parte en triángulos de {f(relief.REFINE_EDGE * rf)} mm '
+            f'que se ajustan a los puntos; la memoria apenas sube.')
     return out
 
 

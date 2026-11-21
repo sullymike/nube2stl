@@ -62,6 +62,7 @@ def reconstruct3d(hm, prm, log=lambda s: None):
     pc.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=3 * res, max_nn=30))
     # todo lo escaneado se vio desde delante: las normales deben apuntar hacia +Z (hacia el escáner)
     pc.orient_normals_to_align_with_direction(np.array([0.0, 0.0, 1.0]))
+    zp = relief.zone_subset(pc, P[fine] if rf else None, rf)   # para afinar las zonas después de Poisson
 
     # ---------------- puntos sintéticos: trasera, paredes y (si es rectángulo) suelo exterior
     top = floor + (np.where(mask, grid, floor) - floor) * prm.z_scale     # altura del frente por celda
@@ -103,7 +104,7 @@ def reconstruct3d(hm, prm, log=lambda s: None):
 
     # ---------------- Poisson
     ext = np.ptp(np.asarray(allpc.points), 0).max()
-    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, rf or res, ext=ext)
+    depth = prm.poisson_depth or relief.poisson_depth_auto(None, prm, res, ext=ext)   # las zonas, después
     if depth >= 11:
         log(f'AVISO: profundidad {depth} con {len(allpc.points):,} puntos puede necesitar 6–10 GB de memoria y '
             f'varios minutos. Si falta memoria, aumenta la resolución o fija una profundidad menor.')
@@ -123,6 +124,9 @@ def reconstruct3d(hm, prm, log=lambda s: None):
     bad = relief._bad_edges(tris, len(verts))
     if bad:
         verts, tris, vcol, bad = _repair(verts, tris, vcol, log)
+    if zp is not None:
+        verts, tris, vcol = relief.refine_zones(verts, tris, vcol, *zp, rf=rf, cell=ext * 1.1 / 2 ** depth, log=log)
+        bad = relief._bad_edges(tris, len(verts))
 
     # ---------------- a coordenadas de la pieza: base plana en z=0 y escala
     z = verts[:, 2] - zb

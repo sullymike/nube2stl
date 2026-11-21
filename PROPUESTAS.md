@@ -462,6 +462,19 @@ que el resto.
     (antes 336.000), simplificada 14.900 (antes 15.900), 6,2 s y 407 MB (antes 22,7 s y 517 MB). Cerrada con
     contorno, rectángulo, marco y molde. Con reverso, sin zonas (aviso).
 
+- **Zonas con Poisson sin subir la profundidad** (*HECHO el 21-11-2026, 0.26.0*). Medido en el terreno de 35 × 15 m
+  del usuario (malla de 19 M triángulos, 60 zonas, 30 % de la nube): subir Poisson de 11 a 12 por las zonas daba una
+  estimación de 23–35 GB; el octree se afina en toda la pieza, no solo «donde hay puntos densos» (lo que decía la
+  ayuda), porque la nube tiene casi la misma densidad dentro y fuera. Ahora `relief.refine_zones`: Poisson con la
+  resolución general y después, en la malla cerrada, bisección por la arista más larga (solo si es la más larga de
+  sus dos triángulos: la malla sigue conforme) hasta 1,2·celda fina, y cada vértice de la zona a lo largo de su
+  normal hasta la mediana de los puntos de la zona a menos de una celda de esa recta (3 pasadas, como mucho 1,5
+  celdas de Poisson, normales del mismo lado). Esfera con bultos: 0,069–0,08 mm frente a 0,068 subiendo dos
+  niveles; terreno a profundidad 10 con las 60 zonas: 4,4 GB (3,9 sin zonas), desviación media 2,8 mm (3,3 sin).
+  `relief.zone_subset` para los modos 3d y bloque. Al probarlo salió que la simplificación por zonas exigía error
+  máximo ≤ 2× tolerancia: un vértice a 7,07 mm (tolerancia 3,5) dejaba 4,4 M triángulos sin simplificar; ahora 3×.
+  Alisar el desplazamiento con los vecinos no mejoró nada (`REFINE_SMOOTH = 0`).
+
 ### G3. Pincel para las zonas de detalle — *HECHO el 18-11-2026 (después de 0.23.0)*
 - **Por qué.** Al usuario le parecía que «pintar la zona» no estaba hecho: la zona solo se marcaba con la tercera
   opción del desplegable del recorte, que no se veía, y con lazo o rectángulo, no con un pincel.

@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from scipy import ndimage
@@ -889,17 +890,16 @@ def memory_available():
         return None, None
 
 
-DEPTH_MAX, DEPTH_MAX_ZONES = 11, 12   # profundidad automática máxima de Poisson (con zonas de detalle, una más:
-                                      # el octree solo se afina donde hay puntos densos, en la zona)
+DEPTH_MAX = 11                        # profundidad automática máxima de Poisson (con zonas de detalle también: se
+                                      # afinan después en la malla, refine_zones)
 
 
 def poisson_depth_auto(stats, prm, res, ext=None):
     """La misma profundidad automática que usan los modos 3D y objeto, a partir del tamaño de la cara (o del
-    objeto, o de ext si se da). Con zonas de detalle, res es la de las zonas."""
+    objeto, o de ext si se da)."""
     if ext is None:
         ext = poisson_ext(stats, prm)
-    hi = DEPTH_MAX_ZONES if has_detail(prm) else DEPTH_MAX
-    return int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, hi))
+    return int(np.clip(np.ceil(np.log2(ext * 1.1 / (1.25 * res))), 6, DEPTH_MAX))
 
 
 def poisson_ext(stats, prm):
@@ -913,11 +913,11 @@ def octree_cell(ext, depth):
     return ext * 1.1 / 2 ** depth
 
 
-def zone_poisson(stats, prm, rf):
-    """Profundidad de Poisson con zonas de detalle de celda rf: (profundidad, automática, celda del octree,
-    profundidad automática). La automática es la que llega a la celda de las zonas (como mucho DEPTH_MAX_ZONES)."""
+def zone_poisson(stats, prm, res):
+    """Profundidad de Poisson de la pieza con zonas de detalle (la de la resolución general res; las zonas se
+    afinan después en la malla): (profundidad, automática, celda del octree, profundidad automática)."""
     ext = poisson_ext(stats, prm)
-    auto = poisson_depth_auto(stats, prm, rf, ext=ext)
+    auto = poisson_depth_auto(stats, prm, res, ext=ext)
     d = prm.poisson_depth or auto
     return d, not prm.poisson_depth, octree_cell(ext, d), auto
 
@@ -1020,12 +1020,9 @@ def memory_estimate(stats, prm, npoints, avail=None):
     cells = pl['cells']
     if prm.mode in ('3d', 'objeto', 'bloque'):
         rf = zone_res(prm, pl['res'], pl['res_scan'])
-        depth, pcell = poisson_cell(stats, prm, rf or pl['res'])
-        if rf:                                  # zonas de detalle: su parte de la superficie, a la celda fina
-            frac = float(stats.get('detail_frac', 0.1))
-            cf = max(rf, pcell)
-            cells = cells * (1 - frac) + cells * frac * (pl['res'] / cf) ** 2
-        elif pcell > pl['res']:                 # en piezas grandes y finas (un acueducto a escala 1) es más gruesa
+        depth, pcell = poisson_cell(stats, prm, pl['res'])     # las zonas no cambian Poisson: se afinan después
+        zcells = cells * float(stats.get('detail_frac', 0.1)) if rf else 0.0
+        if pcell > pl['res']:                   # en piezas grandes y finas (un acueducto a escala 1) es más gruesa
             cells *= (pl['res'] / pcell) ** 2   # que la resolución pedida, y no hay tantas celdas
         per_cell = MEM_PER_CELL_3D.get(depth) or (MEM_PER_CELL_3D[13] if depth > 13
                                                     else MEM_PER_CELL_3D[9] / 1.6 ** (9 - depth))
@@ -1035,6 +1032,11 @@ def memory_estimate(stats, prm, npoints, avail=None):
             cells *= MEM_GROUND
         gb = MEM_BASE_GB + MEM_PER_POINT_3D * npoints + per_cell * cells
         detail = f'{npoints / 1e6:.1f} M puntos, {cells / 1e6:.2f} M celdas, Poisson a profundidad {depth}'
+        if rf:                                  # la malla afinada en las zonas: triángulos de REFINE_EDGE·rf
+            ztris = 1.6 * zcells * (pl['res'] / (REFINE_EDGE * rf)) ** 2
+            gb += MEM_PER_TRI * ztris
+            cells += zcells * (pl['res'] / rf) ** 2
+            detail += f'; zonas de detalle afinadas: ≈ {ztris / 1e6:.1f} M triángulos'
     else:
         rf = zone_res(prm, pl['res'], pl['res_scan'])
         if rf:                                  # zonas de detalle: la caja de las zonas, a la celda fina
@@ -2125,6 +2127,9 @@ def _decimate_selected(V, T, vcol, sel, target):
     return None if _bad_edges(out[1], len(out[0])) > _bad_edges(T, len(V)) else out
 
 
+ZONED_MAX_TOL = 3.0               # simplificación por zonas: error máximo admitido, en tolerancias
+
+
 def simplify_zoned(r, tol_out, tol_in, inside, log=lambda s: None):
     """Simplificación automática con dos tolerancias: fuera de las zonas de detalle, tol_out; dentro, tol_in (más
     fina). inside(verts) -> bool por vértice. Primero se simplifica lo de fuera (sin tocar las zonas) y luego lo de
@@ -2156,8 +2161,10 @@ def simplify_zoned(r, tol_out, tol_in, inside, log=lambda s: None):
             if out is None:
                 break
             err = _mesh_error(V0, T0, out[0], out[1], pts=ref)
-            # el máximo también: una esquina de la pared metida 2 mm son pocos puntos y no llega al p99,9
-            ok = err[1] <= tol and err[3] <= 2 * tol and err[2] <= 2 * tol
+            # el máximo también: una esquina de la pared metida 2 mm son pocos puntos y no llega al p99,9. Pero no
+            # 2× la tolerancia como el p99,9: en una malla real de millones de triángulos un solo vértice a 7,07 mm
+            # con 3,5 de tolerancia dejaba la malla entera sin simplificar (220 MB de STL)
+            ok = err[1] <= tol and err[3] <= 2 * tol and err[2] <= ZONED_MAX_TOL * tol
             log(f'  {name}, {pct:g} % ({len(out[1]):,} triángulos en total): error p99 {err[1]:.3g} mm, '
                 f'p99,9 {err[3]:.3g} mm, máximo {err[2]:.3g} mm {"✔" if ok else "✘"}')
             if not ok:
@@ -2385,6 +2392,145 @@ def _vertex_normals(V, T):
         for c in range(3):
             vn[:, c] += np.bincount(T[:, k], fn[:, c], minlength=len(V))
     return vn / np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
+
+
+REFINE_EDGE = 1.2                 # zonas de detalle en Poisson: lado de los triángulos afinados, en celdas finas
+REFINE_MAX_VERTS = 30_000_000     # tope de vértices de la malla afinada
+REFINE_SMOOTH = 0                 # pasadas de media del desplazamiento con los vecinos
+
+
+def refine_zones(V, T, vcol, Z, Zn=None, Zc=None, rf=1.0, cell=1.0, log=lambda s: None):
+    """Detalle de las zonas sin subir la profundidad de Poisson en toda la pieza (antes, unas zonas pequeñas en un
+    modelo de 35 m llevaban Poisson de 11 a 12 niveles y la memoria de 9 a 23 GB).
+
+    Poisson se hace con la celda general; aquí, en la malla ya cerrada: (1) los triángulos de las zonas se parten
+    por su arista más larga hasta que ninguna pase de REFINE_EDGE·rf (una arista solo se parte si es la más larga de
+    sus dos triángulos, así que la malla sigue conforme: sin vértices en T ni rendijas en el borde de la zona);
+    (2) cada vértice de la zona se mueve a lo largo de su normal hasta la mediana de los puntos finos Z que caen a
+    menos de rf de esa recta (tres pasadas, como mucho 1,5 celdas de Poisson, y solo puntos cuya normal mire al
+    mismo lado: no se cogen los de la otra cara de una pared fina). Z, Zn, Zc: puntos de las zonas, sus normales y
+    colores (0..1), en el sistema de la malla. Medido en una esfera con bultos de 0,8 mm: error en la zona 0,069 mm,
+    igual que con Poisson dos niveles más hondo (0,068), en una fracción del tiempo. -> (V, T, vcol)"""
+    from scipy.spatial import cKDTree
+    if Z is None or len(Z) < 10:
+        return V, T, vcol
+    Z = np.asarray(Z, np.float64)
+    tree = cKDTree(Z)
+    thr = max(2.0 * rf, cell)
+    near = lambda X: np.isfinite(tree.query(X, distance_upper_bound=thr, workers=-1)[0])   # noqa: E731
+    V = np.asarray(V, np.float64)
+    T = np.asarray(T, np.int64)
+    sel = near(V)
+    if not sel.any():
+        return V, T, vcol
+    col = None if vcol is None else np.asarray(vcol, np.float64)
+    n0 = len(T)
+    L = REFINE_EDGE * rf
+    for _ in range(60):
+        V, T, sel, col, more = _bisect_pass(V, T, sel, col, L, near)
+        if not more or len(V) > REFINE_MAX_VERTS:
+            break
+    if len(V) > REFINE_MAX_VERTS:
+        log(f'AVISO: zonas de detalle: la malla afinada llega al tope de {REFINE_MAX_VERTS / 1e6:.0f} M vértices; '
+            f'no se afina más (sube la resolución de las zonas)')
+    idx = np.flatnonzero(sel)
+    moved = np.zeros(len(idx))
+    E = np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], axis=1), axis=0)
+    E = E[sel[E].all(1)]                                   # aristas dentro de la zona, para alisar el desplazamiento
+    pos = np.full(len(V), -1, np.int64)
+    pos[idx] = np.arange(len(idx))
+    ea, eb = pos[E[:, 0]], pos[E[:, 1]]
+    for _ in range(3):
+        N = _vertex_normals(V, T)
+        D = np.full(len(idx), np.nan)
+        for c in range(0, len(idx), 500_000):
+            ii = idx[c:c + 500_000]
+            dist, nb = tree.query(V[ii], k=24, distance_upper_bound=3 * rf, workers=-1)
+            valid = np.isfinite(dist)
+            nb = np.where(valid, nb, 0)
+            q = Z[nb] - V[ii, None, :]
+            n = N[ii]
+            h = np.einsum('ijk,ik->ij', q, n)
+            ok = valid & (np.einsum('ijk,ijk->ij', q, q) - h * h < rf * rf) & (np.abs(h) < 1.5 * cell)
+            if Zn is not None:
+                ok &= np.einsum('ijk,ik->ij', np.asarray(Zn)[nb], n) > 0.3
+            with np.errstate(all='ignore'), warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)          # filas sin puntos: NaN, se saltan
+                d = np.nanmedian(np.where(ok, h, np.nan), axis=1)
+            D[c:c + len(ii)] = np.where((ok.sum(1) >= 2) & np.isfinite(d), d, np.nan)
+        for _ in range(REFINE_SMOOTH):              # media con los vecinos: quita el ruido del muestreo
+            have = np.isfinite(D)
+            Dz = np.where(have, D, 0.0)
+            acc = Dz + np.bincount(ea, Dz[eb], len(D)) + np.bincount(eb, Dz[ea], len(D))
+            cnt = have + np.bincount(ea, have[eb], len(D)) + np.bincount(eb, have[ea], len(D))
+            D = np.where(have, acc / np.maximum(cnt, 1), np.nan)
+        good = np.isfinite(D)
+        V[idx[good]] += D[good, None] * N[idx[good]]
+        moved[good] += D[good]
+    integer = vcol is not None and np.issubdtype(np.asarray(vcol).dtype, np.integer)
+    if Zc is not None and col is not None:                 # el color, el del punto más cercano
+        _, k = tree.query(V[idx], workers=-1)
+        col[idx] = np.asarray(Zc, np.float64)[k] * (255.0 if integer else 1.0)
+    log(f'Zonas de detalle: la malla se afina allí con triángulos de {L:.3g} y se ajusta a los puntos de la zona '
+        f'({n0:,} → {len(T):,} triángulos; {len(idx):,} vértices movidos, la mitad más de {np.median(np.abs(moved)):.3g})')
+    if integer:
+        col = col.round().clip(0, 255).astype(np.asarray(vcol).dtype)
+    return V, T, col
+
+
+def zone_subset(pc, Fz, rf):
+    """Puntos de pc (ya submuestreada) que son de las zonas: a menos de rf de algún punto original de las zonas
+    (Fz). -> (puntos, normales o None, colores o None) para refine_zones, o None."""
+    from scipy.spatial import cKDTree
+    if Fz is None or len(Fz) < 10 or not rf:
+        return None
+    Q = np.asarray(pc.points)
+    m = np.isfinite(cKDTree(np.asarray(Fz, np.float64)).query(Q, distance_upper_bound=rf, workers=-1)[0])
+    if not m.any():
+        return None
+    return (Q[m], np.asarray(pc.normals)[m] if pc.has_normals() else None,
+            np.asarray(pc.colors)[m] if pc.has_colors() else None)
+
+
+def _bisect_pass(V, T, sel, col, L, near):
+    """Una pasada de bisección por la arista más larga en los triángulos que tocan la zona (sel)."""
+    tsel = sel[T].any(1)
+    act_v = np.zeros(len(V), bool)
+    act_v[T[tsel].ravel()] = True
+    act = act_v[T].any(1)                        # los de la zona y sus vecinos (comparten arista con ellos)
+    A = T[act]
+    E = np.sort(np.stack([A[:, [0, 1]], A[:, [1, 2]], A[:, [2, 0]]], 1).reshape(-1, 2), axis=1)
+    key, te = np.unique(E[:, 0] * np.int64(len(V)) + E[:, 1], return_inverse=True)
+    te = te.reshape(-1, 3)
+    a, b = key // len(V), key % len(V)
+    el = np.linalg.norm(V[a] - V[b], axis=1)
+    lt = el[te]
+    k = lt.argmax(1)
+    longest = te[np.arange(len(A)), k]
+    want = tsel[act] & (lt.max(1) > L)
+    if not want.any():
+        return V, T, sel, col, False
+    cand = np.zeros(len(key), bool)
+    cand[longest[want]] = True
+    notlong = np.zeros(len(key), bool)
+    for j in range(3):
+        notlong[te[:, j][longest != te[:, j]]] = True
+    split = cand & ~notlong
+    if not split.any():
+        return V, T, sel, col, False
+    ids = np.full(len(key), -1, np.int64)
+    ids[split] = len(V) + np.arange(split.sum())
+    mid = (V[a[split]] + V[b[split]]) / 2
+    V = np.r_[V, mid]
+    sel = np.r_[sel, near(mid)]
+    if col is not None:
+        col = np.r_[col, (col[a[split]] + col[b[split]]) / 2]
+    hit = split[longest]
+    t, kk, m = A[hit], k[hit], ids[longest[hit]]
+    r = np.arange(len(t))
+    i0, i1, i2 = t[r, kk], t[r, (kk + 1) % 3], t[r, (kk + 2) % 3]
+    T = np.r_[T[~act], A[~hit], np.c_[i0, m, i2], np.c_[m, i1, i2]]
+    return V, T, sel, col, True
 
 
 def _voxel_pick(P, h):
