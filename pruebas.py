@@ -1252,6 +1252,11 @@ class Actualizar(unittest.TestCase):
                                                                if notas_version.lead(x) == x))
         self.assertIn('Buscar actualizaciones', t)
         self.assertIn(f'compare/v{version.HISTORY[1][0]}...v{v}', t)
+        # 0.21.1 no se publicó aparte: sus novedades van en las notas de la 0.22.0, comparada con la v0.21.0
+        t = notas_version.notes('0.22.0', repo='usuario/nube2stl', prev='0.21.0')
+        self.assertIn('### También de la 0.21.1', t)
+        self.assertIn('compare/v0.21.0...v0.22.0', t)
+        self.assertNotIn('compare/', notas_version.notes('0.20.0', prev=''))   # la primera publicada: sin enlace
         self.assertEqual(notas_version.lead('Memoria: menos'), '**Memoria:** menos')
         self.assertEqual(notas_version.lead('Una frase. Con punto: no'), 'Una frase. Con punto: no')
 
