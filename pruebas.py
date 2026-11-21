@@ -1240,6 +1240,21 @@ class Actualizar(unittest.TestCase):
     """Buscar e instalar versiones nuevas (actualizar.py) sin salir a internet: GitHub se sustituye por respuestas
     preparadas, el .zip de la versión se hace aquí y el «repositorio remoto» es otra carpeta de git."""
 
+    def test_notas_de_la_version(self):
+        """Las notas que publica GitHub (notas_version.py, desde version.HISTORY): novedades con el tema en negrita,
+        cómo instalar o actualizar y el enlace a los cambios desde la versión anterior."""
+        import notas_version
+        import version
+        v, _, items = version.HISTORY[0]
+        t = notas_version.notes(v, repo='usuario/nube2stl')
+        self.assertTrue(t.startswith('## Novedades'))
+        self.assertEqual(t.count('\n- **'), len(items) + 2 - sum(1 for x in items
+                                                               if notas_version.lead(x) == x))
+        self.assertIn('Buscar actualizaciones', t)
+        self.assertIn(f'compare/v{version.HISTORY[1][0]}...v{v}', t)
+        self.assertEqual(notas_version.lead('Memoria: menos'), '**Memoria:** menos')
+        self.assertEqual(notas_version.lead('Una frase. Con punto: no'), 'Una frase. Con punto: no')
+
     def test_versiones(self):
         import actualizar as a
         self.assertEqual(a.parse_version('v0.21.0'), (0, 21, 0, 1))

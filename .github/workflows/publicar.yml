@@ -14,18 +14,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: La etiqueta coincide con version.py y sus novedades
         run: |
-          python3 - <<'PY' > notas.md
+          python3 - <<'PY'
           import os, sys
           sys.path.insert(0, '.')
           import version
           tag = os.environ['GITHUB_REF_NAME'].lstrip('v')
           if tag != version.__version__:
               sys.exit(f'La etiqueta v{tag} no coincide con __version__ = {version.__version__} (version.py)')
-          for v, date, items in version.HISTORY:
-              if v == tag:
-                  print('\n'.join(f'- {x}' for x in items))
-                  break
           PY
+          python3 notas_version.py "${GITHUB_REF_NAME#v}" > notas.md
           cat notas.md
       - name: Publicar la versión
         env:

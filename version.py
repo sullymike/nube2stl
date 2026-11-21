@@ -9,11 +9,16 @@ GITHUB_REPO = 'sullymike/nube2stl'
 # (versión, fecha, cambios) — la más reciente primero
 HISTORY = [
     ('0.26.0', 'noviembre 2026', [
-        'Zonas de detalle con Poisson (objeto, terreno, bloque, 3d): Poisson ya no sube la profundidad de toda la '
-        'pieza; se hace con la resolución general y después, solo en las zonas, la malla se parte en triángulos más '
-        'pequeños que se llevan a los puntos del escaneo (sin rendijas en el borde). Igual de fiel (0,069 mm frente a '
-        '0,068 en la prueba) y la memoria apenas sube: en un terreno de 35 m con 60 zonas, 4,4 GB en vez de 23',
-        'Simplificación por zonas: un solo vértice algo alejado ya no deja la malla entera sin simplificar',
+        'Zonas de detalle con Poisson (objeto, terreno, bloque, 3d): mucha menos memoria. Antes las zonas subían la '
+        'profundidad de Poisson en toda la pieza; ahora Poisson se hace con la resolución general y después, solo en '
+        'las zonas, la malla se parte en triángulos más pequeños que se ajustan a los puntos del escaneo, cosidos '
+        'con el resto sin rendijas',
+        'Medido: en un terreno de 35 × 15 m con 60 zonas, 4,4 GB en vez de los 23–35 GB que pedía antes; en la '
+        'prueba de la esfera con bultos de 0,8 mm, error en la zona de 0,08 mm (0,07 antes) con los mismos '
+        'triángulos',
+        'Simplificación por zonas: un solo vértice algo alejado ya no deja la malla entera sin simplificar (en un '
+        'modelo grande quedaban 4,4 millones de triángulos y 220 MB de STL)',
+        'La nota de «Resolución de las zonas» (Avanzado) y la ayuda explican el método nuevo',
     ]),
     ('0.25.1', 'noviembre 2026', [
         'Memoria: los OBJ y STL grandes se leen por bloques (un OBJ de 2,5 GB y 19 M triángulos pasaba de 8 GB al '
